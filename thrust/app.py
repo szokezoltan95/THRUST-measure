@@ -1,18 +1,16 @@
 import sys
-from pathlib import Path
+
+from PyQt6.QtWidgets import QApplication
 
 from thrust.paths import ensure_app_directories
+from thrust.ui.main_window import MainWindow
 
 
 def main() -> int:
-    """
-    Main entry point for the THRUST application.
-    For now, this only prepares required directories and prints
-    a simple startup message. PyQt UI will be connected next.
-    """
     ensure_app_directories()
 
-    print("THRUST started successfully.")
-    print(f"Project root: {Path(__file__).resolve().parent.parent}")
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
 
-    return 0
+    return app.exec()
