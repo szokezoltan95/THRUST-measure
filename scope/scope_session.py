@@ -35,12 +35,16 @@ class ScopeSessionResult:
     abort_reason: str = ""
 
 
-class bcolors:
-    OKBLUE = "\033[44m"
-    OKGREEN = "\033[42m"
-    WARNING = "\033[93m"
-    FAIL = "\033[43m"
-    ENDC = "\033[0m"
+def emit_log(
+    config: ScopeConfig,
+    log_callback,
+    message: str,
+    debug: bool = False,
+) -> None:
+    if log_callback is not None:
+        log_callback(message)
+    if debug and getattr(config, "debug_output", False):
+        print(message)
 
 
 def build_actions(stick_max: int):
@@ -64,7 +68,15 @@ def build_actions(stick_max: int):
     )
 
 
-def request_new_action(difficulty: str, shuffle_sequence: int, action_shuffle: list[int], actions, stick_max: int):
+def request_new_action(
+    difficulty: str,
+    shuffle_sequence: int,
+    action_shuffle: list[int],
+    actions,
+    stick_max: int,
+    config: ScopeConfig,
+    log_callback=None,
+):
     if difficulty == "EASY":
         if shuffle_sequence < 15:
             shuffle_sequence += 1
@@ -75,18 +87,30 @@ def request_new_action(difficulty: str, shuffle_sequence: int, action_shuffle: l
 
     elif difficulty == "MEDIUM":
         stick_choice = random.choice([0, 1])
-        deflx_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
-        defly_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
+        deflx_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
+        defly_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
         if stick_choice == 0:
             action_request = [deflx_choice, defly_choice, 0, 0]
         else:
             action_request = [0, 0, deflx_choice, defly_choice]
 
     elif difficulty == "HARD":
-        aile_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
-        elev_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
-        thro_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
-        rudd_choice = random.choice([-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9])
+        aile_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
+        elev_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
+        thro_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
+        rudd_choice = random.choice(
+            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
+        )
         action_request = [aile_choice, elev_choice, thro_choice, rudd_choice]
 
     elif difficulty == "ULTRA":
@@ -100,11 +124,15 @@ def request_new_action(difficulty: str, shuffle_sequence: int, action_shuffle: l
         raise ValueError("Invalid difficulty")
 
     action_request = [int(v) for v in action_request]
-    print("Action:", action_request, end="")
+    emit_log(config, log_callback, f"New action requested: {action_request}", debug=True)
     return action_request, shuffle_sequence
 
 
-def evaluate_step_response(data_in: pd.DataFrame, channel: str, creq: str):
+def evaluate_step_response(
+    data_in: pd.DataFrame,
+    channel: str,
+    creq: str,
+):
     data_out = [[]]
     j = 0
     k = 0
@@ -128,7 +156,6 @@ def evaluate_step_response(data_in: pd.DataFrame, channel: str, creq: str):
             n_offset = data_in[creq].iloc[i - 1]
             data_out.append([])
             j += 1
-            print(".", end="")
 
         data_out[j].append(((data_in[channel].iloc[i]) - n_offset) * n_gain)
 
@@ -273,33 +300,48 @@ def can_run_evaluation(logfile_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, graph_path: Path):
+def run_evaluation(
+    config: ScopeConfig,
+    logfile_path: Path,
+    step_path: Path,
+    graph_path: Path,
+    log_callback=None,
+):
     ok, reason = can_run_evaluation(logfile_path)
     if not ok:
-        print(f"Evaluation skipped: {reason}")
+        emit_log(config, log_callback, f"Evaluation skipped: {reason}")
         return "", ""
 
-    print("Evaluating step response from data", logfile_path)
+    emit_log(config, log_callback, f"Evaluating step response from data: {logfile_path}")
     datafile = pd.read_csv(logfile_path, sep="\t")
 
     try:
-        print("Calculating channel AILE ", end="")
-        step_aile, step_aile_median, step_aile_mean, step_aile_std = evaluate_step_response(datafile, "AILE", "AREQ")
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
+        emit_log(config, log_callback, "Calculating channel AILE...", debug=True)
+        step_aile, step_aile_median, step_aile_mean, step_aile_std = evaluate_step_response(
+            datafile, "AILE", "AREQ"
+        )
+        emit_log(config, log_callback, "AILE evaluation complete.", debug=True)
 
-        print("Calculating channel ELEV ", end="")
-        step_elev, step_elev_median, step_elev_mean, step_elev_std = evaluate_step_response(datafile, "ELEV", "EREQ")
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
+        emit_log(config, log_callback, "Calculating channel ELEV...", debug=True)
+        step_elev, step_elev_median, step_elev_mean, step_elev_std = evaluate_step_response(
+            datafile, "ELEV", "EREQ"
+        )
+        emit_log(config, log_callback, "ELEV evaluation complete.", debug=True)
 
-        print("Calculating channel THRO ", end="")
-        step_thro, step_thro_median, step_thro_mean, step_thro_std = evaluate_step_response(datafile, "THRO", "TREQ")
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
+        emit_log(config, log_callback, "Calculating channel THRO...", debug=True)
+        step_thro, step_thro_median, step_thro_mean, step_thro_std = evaluate_step_response(
+            datafile, "THRO", "TREQ"
+        )
+        emit_log(config, log_callback, "THRO evaluation complete.", debug=True)
 
-        print("Calculating channel RUDD ", end="")
-        step_rudd, step_rudd_median, step_rudd_mean, step_rudd_std = evaluate_step_response(datafile, "RUDD", "RREQ")
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
+        emit_log(config, log_callback, "Calculating channel RUDD...", debug=True)
+        step_rudd, step_rudd_median, step_rudd_mean, step_rudd_std = evaluate_step_response(
+            datafile, "RUDD", "RREQ"
+        )
+        emit_log(config, log_callback, "RUDD evaluation complete.", debug=True)
+
     except Exception as exc:
-        print(f"\nEvaluation failed: {exc}")
+        emit_log(config, log_callback, f"Evaluation failed: {exc}")
         return "", ""
 
     sample_limit = min(
@@ -319,23 +361,45 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     )
 
     if sample_limit < 10:
-        print("Evaluation skipped: not enough step samples.")
+        emit_log(config, log_callback, "Evaluation skipped: not enough step samples.")
         return "", ""
 
     result_step_path = ""
     result_graph_path = ""
 
     if config.save_step_file:
-        print("Saving step response data to file...", end="")
-        stmap = ("Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD", "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD")
+        emit_log(config, log_callback, f"Saving step response data to file: {step_path}", debug=True)
+        stmap = (
+            "Time[s]",
+            "AMEA",
+            "AMED",
+            "ASTD",
+            "EMEA",
+            "EMED",
+            "ESTD",
+            "TMEA",
+            "TMED",
+            "TSTD",
+            "RMEA",
+            "RMED",
+            "RSTD",
+        )
 
         with open(step_path, "w", encoding="utf-8", newline="") as stepfile:
             csvdump = [
                 [i / config.fps for i in range(sample_limit)],
-                step_aile_mean[:sample_limit], step_aile_median[:sample_limit], step_aile_std[:sample_limit],
-                step_elev_mean[:sample_limit], step_elev_median[:sample_limit], step_elev_std[:sample_limit],
-                step_thro_mean[:sample_limit], step_thro_median[:sample_limit], step_thro_std[:sample_limit],
-                step_rudd_mean[:sample_limit], step_rudd_median[:sample_limit], step_rudd_std[:sample_limit],
+                step_aile_mean[:sample_limit],
+                step_aile_median[:sample_limit],
+                step_aile_std[:sample_limit],
+                step_elev_mean[:sample_limit],
+                step_elev_median[:sample_limit],
+                step_elev_std[:sample_limit],
+                step_thro_mean[:sample_limit],
+                step_thro_median[:sample_limit],
+                step_thro_std[:sample_limit],
+                step_rudd_mean[:sample_limit],
+                step_rudd_median[:sample_limit],
+                step_rudd_std[:sample_limit],
             ]
 
             stepfile.write("\t".join(stmap) + "\n")
@@ -343,8 +407,8 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
                 row = [str(seq[i]) for seq in csvdump]
                 stepfile.write("\t".join(row) + "\n")
 
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
         result_step_path = str(step_path)
+        emit_log(config, log_callback, "Step response data saved.", debug=True)
 
     td_avg = None
     tmax_avg = None
@@ -357,7 +421,7 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
             td_avg = None
             tmax_avg = None
 
-    print("Plotting step response graphs...", end="")
+    emit_log(config, log_callback, "Plotting step response graphs...", debug=True)
     fig = plt.figure(figsize=(15, 10))
     ax1 = plt.subplot2grid((2, 2), (0, 0))
     ax2 = plt.subplot2grid((2, 2), (0, 1))
@@ -372,7 +436,14 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     x1 = [i / config.fps for i in range(0, len(step_aile_mean))]
     ax1.plot(x1, step_aile_median, color="blue", label="Median")
     ax1.plot(x1, step_aile_mean, color="red", label="Mean")
-    ax1.fill_between(x1, step_aile_mean - step_aile_std, step_aile_mean + step_aile_std, color="red", label="Stdev", alpha=0.3)
+    ax1.fill_between(
+        x1,
+        step_aile_mean - step_aile_std,
+        step_aile_mean + step_aile_std,
+        color="red",
+        label="Stdev",
+        alpha=0.3,
+    )
     ax1.set_xlim(0, 2)
     ax1.set_ylim(-0.2, 1.3)
     ax1.legend(loc="lower right")
@@ -384,7 +455,14 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     x2 = [i / config.fps for i in range(0, len(step_elev_mean))]
     ax2.plot(x2, step_elev_median, color="blue", label="Median")
     ax2.plot(x2, step_elev_mean, color="red", label="Mean")
-    ax2.fill_between(x2, step_elev_mean - step_elev_std, step_elev_mean + step_elev_std, color="red", label="Stdev", alpha=0.3)
+    ax2.fill_between(
+        x2,
+        step_elev_mean - step_elev_std,
+        step_elev_mean + step_elev_std,
+        color="red",
+        label="Stdev",
+        alpha=0.3,
+    )
     ax2.set_xlim(0, 2)
     ax2.set_ylim(-0.2, 1.3)
     ax2.legend(loc="lower right")
@@ -396,7 +474,14 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     x3 = [i / config.fps for i in range(0, len(step_thro_mean))]
     ax3.plot(x3, step_thro_median, color="blue", label="Median")
     ax3.plot(x3, step_thro_mean, color="red", label="Mean")
-    ax3.fill_between(x3, step_thro_mean - step_thro_std, step_thro_mean + step_thro_std, color="red", label="Stdev", alpha=0.3)
+    ax3.fill_between(
+        x3,
+        step_thro_mean - step_thro_std,
+        step_thro_mean + step_thro_std,
+        color="red",
+        label="Stdev",
+        alpha=0.3,
+    )
     ax3.set_xlim(0, 2)
     ax3.set_ylim(-0.2, 1.3)
     ax3.legend(loc="lower right")
@@ -408,7 +493,14 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     x4 = [i / config.fps for i in range(0, len(step_rudd_mean))]
     ax4.plot(x4, step_rudd_median, color="blue", label="Median")
     ax4.plot(x4, step_rudd_mean, color="red", label="Mean")
-    ax4.fill_between(x4, step_rudd_mean - step_rudd_std, step_rudd_mean + step_rudd_std, color="red", label="Stdev", alpha=0.3)
+    ax4.fill_between(
+        x4,
+        step_rudd_mean - step_rudd_std,
+        step_rudd_mean + step_rudd_std,
+        color="red",
+        label="Stdev",
+        alpha=0.3,
+    )
     ax4.set_xlim(0, 2)
     ax4.set_ylim(-0.2, 1.3)
     ax4.legend(loc="lower right")
@@ -418,12 +510,10 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     ax4.set_title("RUDD")
 
     plt.tight_layout()
-    print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
 
     if config.save_graph_pdf:
-        print("Saving graph...", end="")
+        emit_log(config, log_callback, f"Saving graph to: {graph_path}", debug=True)
         plt.savefig(graph_path, dpi=300, bbox_inches="tight")
-        print(f"{bcolors.OKGREEN}COMPLETE{bcolors.ENDC}")
         result_graph_path = str(graph_path)
 
         if config.auto_open_graph:
@@ -434,19 +524,14 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     else:
         plt.close(fig)
 
-    print("Step response evaluation finished.")
+    emit_log(config, log_callback, "Step response evaluation finished.")
     return result_step_path, result_graph_path
-
-def emit_log(message: str, debug: bool = False) -> None:
-    if log_callback is not None:
-        log_callback(message)
-    if debug and config.debug_output:
-        print(message)
-
 
 
 def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionResult:
     config.validate()
+
+    emit_log(config, log_callback, "Validating SCoPE configuration...", debug=True)
 
     chmap = ("AILE", "ELEV", "THRO", "RUDD", "LEVR", "BUTT", "SIDL", "SIDR")
     acmap = ("AREQ", "EREQ", "TREQ", "RREQ", "IRRS")
@@ -460,11 +545,13 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
     stick_max = config.stick_max
     actions = build_actions(stick_max)
 
+    emit_log(config, log_callback, "Building output paths...", debug=True)
     paths = build_output_paths(config)
     logfile_path = paths["logfile_path"]
     evlfile_path = paths["evlfile_path"]
     step_path = paths["step_path"]
     graph_path = paths["graph_path"]
+    emit_log(config, log_callback, f"Output directory: {paths['base_dir']}", debug=True)
 
     gui = SCoPE_GUI(
         gimbal_size=config.gui_gimbal_size,
@@ -495,14 +582,17 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
     evlfile = None
 
     try:
+        emit_log(config, log_callback, f"Initializing joystick index {config.joystick_index}...", debug=True)
         controller = init_controller(config.joystick_index)
         axes = controller.get_numaxes()
+        emit_log(config, log_callback, f"Joystick initialized. Axis count: {axes}", debug=True)
 
         if 0 <= config.break_axis < axes and controller.get_axis(config.break_axis) > 0:
-            print("Release break axis on RC")
+            emit_log(config, log_callback, "Release break axis on RC", debug=True)
         while 0 <= config.break_axis < axes and controller.get_axis(config.break_axis) > 0:
             pygame.event.pump()
 
+        emit_log(config, log_callback, "Starting countdown...")
         gui.set_prompt_visible(True)
         for i in range(config.countdown_s, 0, -1):
             gui.set_prompt_text(str(i))
@@ -514,8 +604,11 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
 
         if config.save_raw_log:
             logfile = open(logfile_path, "w", encoding="utf-8", newline="")
+            emit_log(config, log_callback, f"Raw log file opened: {logfile_path}", debug=True)
+
         if config.save_action_log:
             evlfile = open(evlfile_path, "w", encoding="utf-8", newline="")
+            emit_log(config, log_callback, f"Action log file opened: {evlfile_path}", debug=True)
 
         if logfile is not None:
             logfile.write("TIME")
@@ -537,7 +630,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                 evlfile.write("\t")
             evlfile.write("\n")
 
-        print(f"{bcolors.OKGREEN}LINK ACTIVE{bcolors.ENDC}")
+        emit_log(config, log_callback, "Controller link active.")
 
         total_mistakes = 0
         total_completed = 0
@@ -550,11 +643,21 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
 
         if config.seed is None:
             random.seed(time.time_ns())
+            emit_log(config, log_callback, "Random seed initialized from current time.", debug=True)
         else:
             random.seed(config.seed)
+            emit_log(config, log_callback, f"Random seed set to {config.seed}.", debug=True)
 
         random.shuffle(action_shuffle)
-        action_request, shuffle_sequence = request_new_action(config.difficulty, shuffle_sequence, action_shuffle, actions, stick_max)
+        action_request, shuffle_sequence = request_new_action(
+            config.difficulty,
+            shuffle_sequence,
+            action_shuffle,
+            actions,
+            stick_max,
+            config,
+            log_callback,
+        )
         action_request_np = np.array(action_request)
 
         gui.updateStickZones(action_request)
@@ -608,7 +711,13 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
 
             if action_completed:
                 action_request, shuffle_sequence = request_new_action(
-                    config.difficulty, shuffle_sequence, action_shuffle, actions, stick_max
+                    config.difficulty,
+                    shuffle_sequence,
+                    action_shuffle,
+                    actions,
+                    stick_max,
+                    config,
+                    log_callback,
                 )
                 action_completed = False
                 inzone_timer = 0
@@ -619,7 +728,11 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                 action_start = sample_time
 
             if not action_completed:
-                if all(axvalues_np[0:4] < (action_request_np[0:4] + deadzone_np[0:4])) and all(axvalues_np[0:4] > (action_request_np[0:4] - deadzone_np[0:4])):
+                if all(
+                    axvalues_np[0:4] < (action_request_np[0:4] + deadzone_np[0:4])
+                ) and all(
+                    axvalues_np[0:4] > (action_request_np[0:4] - deadzone_np[0:4])
+                ):
                     inzone_timer += 1
                     in_range = 1
                     gui.updateZoneColor(ok_state=True)
@@ -632,16 +745,24 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                     action_completed = True
                     if evlfile is not None:
                         if config.difficulty == "EASY":
-                            evlstring = f"{(sample_time - action_start)/1_000_000_000}\t{action_shuffle[shuffle_sequence]}\t1\t{total_mistakes}\n"
+                            evlstring = (
+                                f"{(sample_time - action_start)/1_000_000_000}\t"
+                                f"{action_shuffle[shuffle_sequence]}\t1\t{total_mistakes}\n"
+                            )
                         else:
                             evlstring = (
                                 f"{(sample_time - action_start)/1_000_000_000}\t"
-                                f"{action_request[0]}\t{action_request[1]}\t{action_request[2]}\t{action_request[3]}\t1\t{total_mistakes}\n"
+                                f"{action_request[0]}\t{action_request[1]}\t"
+                                f"{action_request[2]}\t{action_request[3]}\t1\t{total_mistakes}\n"
                             )
                         evlfile.write(evlstring)
 
                     total_completed += 1
-                    print(f" {bcolors.OKGREEN}OK{bcolors.ENDC}")
+                    emit_log(
+                        config,
+                        log_callback,
+                        f"Action completed successfully. Completed={total_completed}, Mistakes={total_mistakes}",
+                    )
                     gui.set_counter_text(f"Completed: {total_completed}    Mistakes: {total_mistakes}")
 
                 elif sample_time - action_start >= action_timeout_ns:
@@ -649,15 +770,23 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                     total_mistakes += 1
                     if evlfile is not None:
                         if config.difficulty == "EASY":
-                            evlstring = f"{(sample_time - action_start)/1_000_000_000}\t{action_shuffle[shuffle_sequence]}\t0\t{total_mistakes}\n"
+                            evlstring = (
+                                f"{(sample_time - action_start)/1_000_000_000}\t"
+                                f"{action_shuffle[shuffle_sequence]}\t0\t{total_mistakes}\n"
+                            )
                         else:
                             evlstring = (
                                 f"{(sample_time - action_start)/1_000_000_000}\t"
-                                f"{action_request[0]}\t{action_request[1]}\t{action_request[2]}\t{action_request[3]}\t0\t{total_mistakes}\n"
+                                f"{action_request[0]}\t{action_request[1]}\t"
+                                f"{action_request[2]}\t{action_request[3]}\t0\t{total_mistakes}\n"
                             )
                         evlfile.write(evlstring)
 
-                    print(f" {bcolors.FAIL}FAIL{bcolors.ENDC}")
+                    emit_log(
+                        config,
+                        log_callback,
+                        f"Action timeout. Completed={total_completed}, Mistakes={total_mistakes}",
+                    )
                     gui.set_counter_text(f"Completed: {total_completed}    Mistakes: {total_mistakes}")
 
             gui.updateStickPosition(gui.calculateStickPosition(mapped))
@@ -665,13 +794,13 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
             if 0 <= config.break_axis < axes and controller.get_axis(config.break_axis) > 0:
                 aborted = True
                 abort_reason = f"Session aborted by break axis {config.break_axis}."
-                print(f"\n{bcolors.WARNING}ABORTED BY USER{bcolors.ENDC}")
+                emit_log(config, log_callback, "Session aborted by user.")
                 break
 
             if total_completed >= config.max_completed_actions:
                 break
 
-        print(f"\n{bcolors.OKBLUE}LINK CLOSED{bcolors.ENDC}")
+        emit_log(config, log_callback, "Controller link closed.")
 
         if logfile is not None:
             logfile.close()
@@ -693,9 +822,23 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
         if config.run_evaluation and config.save_raw_log:
             ok_eval, reason = can_run_evaluation(logfile_path)
             if ok_eval:
-                result_step_path, result_graph_path = run_evaluation(config, logfile_path, step_path, graph_path)
+                result_step_path, result_graph_path = run_evaluation(
+                    config,
+                    logfile_path,
+                    step_path,
+                    graph_path,
+                    log_callback=log_callback,
+                )
             else:
-                print(f"Evaluation skipped: {reason}")
+                emit_log(config, log_callback, f"Evaluation skipped: {reason}")
+        else:
+            emit_log(config, log_callback, "Evaluation skipped by configuration.", debug=True)
+
+        emit_log(
+            config,
+            log_callback,
+            f"Session finished. Completed={total_completed}, Mistakes={total_mistakes}, Aborted={aborted}",
+        )
 
         return ScopeSessionResult(
             logfile_path=str(logfile_path) if config.save_raw_log else "",
