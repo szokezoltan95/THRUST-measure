@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -24,6 +26,7 @@ class MainWindow(QMainWindow):
         self.program_selector = QComboBox()
         self.program_selector.addItems(["SCoPE", "SimPLE"])
         self.program_selector.currentIndexChanged.connect(self._on_program_changed)
+        self.program_selector.setMinimumWidth(160)
 
         self.title_label = QLabel("THRUST")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -40,9 +43,39 @@ class MainWindow(QMainWindow):
         self.page_stack.addWidget(self.scope_page)
         self.page_stack.addWidget(self.simple_page)
 
+        self.right_scroll = QScrollArea()
+        self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.right_scroll.setWidget(self.page_stack)
+
+        self.left_panel = QWidget()
+        left_layout = QVBoxLayout(self.left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+
+        common_title = QLabel("Common settings")
+        common_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        left_layout.addWidget(common_title)
+        left_layout.addWidget(self.common_page)
+
+        self.left_panel.setMinimumWidth(340)
+        self.left_panel.setMaximumWidth(460)
+
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(self.left_panel)
+        self.splitter.addWidget(self.right_scroll)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([380, 1020])
+
         self.run_button = QPushButton("Run")
         self.save_button = QPushButton("Save profile")
         self.load_button = QPushButton("Load profile")
+
+        self.run_button.setMinimumHeight(40)
+        self.save_button.setMinimumHeight(40)
+        self.load_button.setMinimumHeight(40)
 
         self.run_button.clicked.connect(self._run_selected_program)
 
@@ -50,9 +83,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(16, 16, 16, 16)
+        root_layout.setSpacing(12)
 
         header_layout = QHBoxLayout()
         header_text_layout = QVBoxLayout()
+        header_text_layout.setSpacing(2)
         header_text_layout.addWidget(self.title_label)
         header_text_layout.addWidget(self.subtitle_label)
 
@@ -68,16 +104,25 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.run_button)
 
         root_layout.addLayout(header_layout)
-        root_layout.addWidget(self.common_page)
-        root_layout.addWidget(self.page_stack, 1)
+        root_layout.addWidget(self.splitter, 1)
         root_layout.addLayout(button_layout)
 
     def _build_simple_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        label = QLabel("SimPLE settings will be added later.")
-        layout.addWidget(label)
+
+        title = QLabel("SimPLE settings")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+
+        placeholder = QLabel("SimPLE settings will be added later.")
+        placeholder.setStyleSheet(
+            "border: 1px solid #888; border-radius: 8px; padding: 12px;"
+        )
+
+        layout.addWidget(title)
+        layout.addWidget(placeholder)
         layout.addStretch()
+
         return page
 
     def _on_program_changed(self, index: int) -> None:
@@ -95,6 +140,15 @@ class MainWindow(QMainWindow):
                 run_scope(config)
 
             else:
-                QMessageBox.information(self, "Not ready", "SimPLE integration will be added later.")
+                QMessageBox.information(
+                    self,
+                    "Not ready",
+                    "SimPLE integration will be added later.",
+                )
+
         except Exception as exc:
-            QMessageBox.critical(self, "Run failed", f"{type(exc).__name__}: {exc}")
+            QMessageBox.critical(
+                self,
+                "Run failed",
+                f"{type(exc).__name__}: {exc}",
+            )
