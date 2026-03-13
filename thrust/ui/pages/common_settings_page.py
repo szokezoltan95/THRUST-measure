@@ -148,3 +148,43 @@ class CommonSettingsPage(QWidget):
         )
         if path:
             self.output_root_edit.setText(path)
+            
+    def export_common_dict(self) -> dict:
+        return {
+            "user": self.user_edit.text().strip() or "Pilot",
+            "fullscreen": self.fullscreen_check.isChecked(),
+            "topmost": self.topmost_check.isChecked(),
+            "debug_output": self.debug_output_check.isChecked(),
+            "fps": self.fps_spin.value(),
+            "joystick_index": self.joystick_index_spin.value(),
+            "break_axis": self.break_axis_spin.value(),
+            "output_root": self.output_root_edit.text().strip(),
+            "profile_name": self.profile_name_edit.text().strip() or "default",
+            "use_dated_subfolders": self.use_dated_subfolders_check.isChecked(),
+            "save_raw_log": self.save_raw_log_check.isChecked(),
+            "save_action_log": self.save_action_log_check.isChecked(),
+            "save_step_file": self.save_step_file_check.isChecked(),
+            "save_graph_pdf": self.save_graph_pdf_check.isChecked(),
+            "auto_open_graph": self.auto_open_graph_check.isChecked(),
+            "run_evaluation": self.run_evaluation_check.isChecked(),
+            "show_graph": self.show_graph_check.isChecked(),
+        }
+
+    def load_common_dict(self, data: dict) -> None:
+        self.user_edit.setText(data.get("user", "Pilot"))
+        self.fullscreen_check.setChecked(data.get("fullscreen", True))
+        self.topmost_check.setChecked(data.get("topmost", True))
+        self.debug_output_check.setChecked(data.get("debug_output", False))
+        self.fps_spin.setValue(data.get("fps", 100))
+        self.joystick_index_spin.setValue(data.get("joystick_index", 0))
+        self.break_axis_spin.setValue(data.get("break_axis", 5))
+        self.output_root_edit.setText(data.get("output_root", self.output_root_edit.text()))
+        self.profile_name_edit.setText(data.get("profile_name", "default"))
+        self.use_dated_subfolders_check.setChecked(data.get("use_dated_subfolders", True))
+        self.save_raw_log_check.setChecked(data.get("save_raw_log", True))
+        self.save_action_log_check.setChecked(data.get("save_action_log", True))
+        self.save_step_file_check.setChecked(data.get("save_step_file", True))
+        self.save_graph_pdf_check.setChecked(data.get("save_graph_pdf", True))
+        self.auto_open_graph_check.setChecked(data.get("auto_open_graph", True))
+        self.run_evaluation_check.setChecked(data.get("run_evaluation", True))
+        self.show_graph_check.setChecked(data.get("show_graph", False))

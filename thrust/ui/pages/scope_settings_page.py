@@ -487,3 +487,27 @@ class ScopeSettingsPage(QWidget):
 
     def _update_preview(self) -> None:
         self.preview_status.setText("Preview refresh requested. Embedded live preview will be added next.")
+        
+    def apply_scope_config(self, cfg: ScopeConfig, common_page) -> None:
+        common_page.load_common_dict(
+            {
+                "user": cfg.user,
+                "fullscreen": cfg.fullscreen,
+                "topmost": cfg.topmost,
+                "debug_output": getattr(cfg, "debug_output", False),
+                "fps": cfg.fps,
+                "joystick_index": cfg.joystick_index,
+                "break_axis": cfg.break_axis,
+                "output_root": cfg.output_root,
+                "profile_name": cfg.profile_name,
+                "use_dated_subfolders": cfg.use_dated_subfolders,
+                "save_raw_log": cfg.save_raw_log,
+                "save_action_log": cfg.save_action_log,
+                "save_step_file": cfg.save_step_file,
+                "save_graph_pdf": cfg.save_graph_pdf,
+                "auto_open_graph": cfg.auto_open_graph,
+                "run_evaluation": cfg.run_evaluation,
+                "show_graph": cfg.show_graph,
+            }
+        )
+        self.load_scope_config(cfg)

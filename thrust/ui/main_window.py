@@ -13,7 +13,11 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
 )
+from pathlib import Path
+from scope.scope_config import ScopeConfig
+
 
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
@@ -122,6 +126,9 @@ class MainWindow(QMainWindow):
         root_layout.addLayout(header_layout)
         root_layout.addWidget(self.splitter, 1)
         root_layout.addLayout(button_layout)
+        
+        self.save_button.clicked.connect(self._save_profile)
+        self.load_button.clicked.connect(self._load_profile)
 
     def append_log(self, message: str) -> None:
         self.log_output.appendPlainText(message)
@@ -178,3 +185,65 @@ class MainWindow(QMainWindow):
                 "Run failed",
                 f"{type(exc).__name__}: {exc}",
             )
+            
+    def _default_scope_profile_dir(self) -> Path:
+        return Path.cwd() / "profiles" / "scope"
+
+    def _save_profile(self) -> None:
+        program = self.program_selector.currentText()
+
+        try:
+            if program == "SCoPE":
+                config = self.scope_page.build_scope_config(self.common_page)
+                config.validate()
+
+                profile_dir = self._default_scope_profile_dir()
+                profile_dir.mkdir(parents=True, exist_ok=True)
+
+                suggested = profile_dir / f"{config.profile_name}.json"
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self,
+                    "Save SCoPE profile",
+                    str(suggested),
+                    "JSON files (*.json)",
+                )
+                if not file_path:
+                    return
+
+                config.save_json(file_path)
+                self.append_log(f"Profile saved: {file_path}")
+
+            else:
+                QMessageBox.information(self, "Not ready", "SimPLE profile support will be added later.")
+
+        except Exception as exc:
+            self.append_log(f"Profile save failed: {type(exc).__name__}: {exc}")
+            QMessageBox.critical(self, "Save failed", f"{type(exc).__name__}: {exc}")
+
+    def _load_profile(self) -> None:
+        program = self.program_selector.currentText()
+
+        try:
+            if program == "SCoPE":
+                profile_dir = self._default_scope_profile_dir()
+                profile_dir.mkdir(parents=True, exist_ok=True)
+
+                file_path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    "Load SCoPE profile",
+                    str(profile_dir),
+                    "JSON files (*.json)",
+                )
+                if not file_path:
+                    return
+
+                cfg = ScopeConfig.load_json(file_path)
+                self.scope_page.apply_scope_config(cfg, self.common_page)
+                self.append_log(f"Profile loaded: {file_path}")
+
+            else:
+                QMessageBox.information(self, "Not ready", "SimPLE profile support will be added later.")
+
+        except Exception as exc:
+            self.append_log(f"Profile load failed: {type(exc).__name__}: {exc}")
+            QMessageBox.critical(self, "Load failed", f"{type(exc).__name__}: {exc}")
