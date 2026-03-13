@@ -1,10 +1,12 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -21,7 +23,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST")
-        self.resize(1400, 900)
+        self.resize(1500, 920)
 
         self.program_selector = QComboBox()
         self.program_selector.addItems(["SCoPE", "SimPLE"])
@@ -48,18 +50,32 @@ class MainWindow(QMainWindow):
         self.right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.right_scroll.setWidget(self.page_stack)
 
+        self.log_output = QPlainTextEdit()
+        self.log_output.setReadOnly(True)
+        self.log_output.setMinimumHeight(220)
+
+        self.clear_log_button = QPushButton("Clear log")
+        self.clear_log_button.clicked.connect(self.log_output.clear)
+
         self.left_panel = QWidget()
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+        left_layout.setSpacing(10)
 
         common_title = QLabel("Common settings")
         common_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+
+        log_group = QGroupBox("Session log")
+        log_layout = QVBoxLayout(log_group)
+        log_layout.addWidget(self.log_output)
+        log_layout.addWidget(self.clear_log_button)
+
         left_layout.addWidget(common_title)
         left_layout.addWidget(self.common_page)
+        left_layout.addWidget(log_group, 1)
 
-        self.left_panel.setMinimumWidth(340)
-        self.left_panel.setMaximumWidth(460)
+        self.left_panel.setMinimumWidth(360)
+        self.left_panel.setMaximumWidth(500)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.left_panel)
@@ -67,7 +83,7 @@ class MainWindow(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([380, 1020])
+        self.splitter.setSizes([410, 1090])
 
         self.run_button = QPushButton("Run")
         self.save_button = QPushButton("Save profile")
@@ -107,6 +123,9 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self.splitter, 1)
         root_layout.addLayout(button_layout)
 
+    def append_log(self, message: str) -> None:
+        self.log_output.appendPlainText(message)
+
     def _build_simple_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -137,7 +156,13 @@ class MainWindow(QMainWindow):
 
                 config = self.scope_page.build_scope_config(self.common_page)
                 config.validate()
-                run_scope(config)
+
+                self.append_log("SCoPE config created successfully.")
+                self.append_log("Starting SCoPE session...")
+
+                run_scope(config, log_callback=self.append_log)
+
+                self.append_log("SCoPE session finished.")
 
             else:
                 QMessageBox.information(
@@ -147,6 +172,7 @@ class MainWindow(QMainWindow):
                 )
 
         except Exception as exc:
+            self.append_log(f"Run failed: {type(exc).__name__}: {exc}")
             QMessageBox.critical(
                 self,
                 "Run failed",

@@ -34,6 +34,9 @@ class CommonSettingsPage(QWidget):
         self.topmost_check = QCheckBox()
         self.topmost_check.setChecked(True)
 
+        self.debug_output_check = QCheckBox()
+        self.debug_output_check.setChecked(False)
+
         self.fps_spin = QSpinBox()
         self.fps_spin.setRange(10, 1000)
         self.fps_spin.setValue(100)
@@ -93,12 +96,10 @@ class CommonSettingsPage(QWidget):
 
         runtime_group = QGroupBox("Runtime")
         runtime_form = QFormLayout(runtime_group)
-        runtime_form.setLabelAlignment(
-            runtime_form.labelAlignment() | runtime_form.labelAlignment()
-        )
         runtime_form.addRow("User:", self.user_edit)
         runtime_form.addRow("Fullscreen:", self.fullscreen_check)
         runtime_form.addRow("Topmost:", self.topmost_check)
+        runtime_form.addRow("Debug output:", self.debug_output_check)
         runtime_form.addRow("FPS:", self.fps_spin)
         runtime_form.addRow("Joystick index:", self.joystick_index_spin)
         runtime_form.addRow("Break axis:", self.break_axis_spin)

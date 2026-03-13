@@ -437,8 +437,15 @@ def run_evaluation(config: ScopeConfig, logfile_path: Path, step_path: Path, gra
     print("Step response evaluation finished.")
     return result_step_path, result_graph_path
 
+def emit_log(message: str, debug: bool = False) -> None:
+    if log_callback is not None:
+        log_callback(message)
+    if debug and config.debug_output:
+        print(message)
 
-def run_scope_session(config: ScopeConfig) -> ScopeSessionResult:
+
+
+def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionResult:
     config.validate()
 
     chmap = ("AILE", "ELEV", "THRO", "RUDD", "LEVR", "BUTT", "SIDL", "SIDR")

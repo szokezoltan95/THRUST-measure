@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QTextEdit,
@@ -25,7 +26,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from scope.SCoPE_GUI import SCoPE_GUI
 from scope.scope_config import ScopeConfig
 
 
@@ -33,8 +33,6 @@ class ScopeSettingsPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
-        self.preview_gui = None
-        self.preview_host = None
         self.joystick = None
         self.joystick_active = False
 
@@ -47,32 +45,40 @@ class ScopeSettingsPage(QWidget):
 
     def _build_variables(self) -> None:
         self.difficulty_edit = QLineEdit("HARD")
+        self.difficulty_edit.setMaximumWidth(140)
 
         self.timeout_spin = QDoubleSpinBox()
         self.timeout_spin.setRange(0.1, 60.0)
         self.timeout_spin.setDecimals(2)
         self.timeout_spin.setValue(3.0)
+        self.timeout_spin.setMaximumWidth(110)
 
         self.hold_time_spin = QDoubleSpinBox()
         self.hold_time_spin.setRange(0.1, 60.0)
         self.hold_time_spin.setDecimals(2)
         self.hold_time_spin.setValue(0.5)
+        self.hold_time_spin.setMaximumWidth(110)
 
         self.stick_max_spin = QSpinBox()
         self.stick_max_spin.setRange(100, 5000)
         self.stick_max_spin.setValue(1000)
+        self.stick_max_spin.setMaximumWidth(110)
 
         self.deadzone_edit = QLineEdit("100,100,100,100")
+        self.deadzone_edit.setMaximumWidth(180)
 
         self.max_actions_spin = QSpinBox()
         self.max_actions_spin.setRange(1, 10000)
         self.max_actions_spin.setValue(50)
+        self.max_actions_spin.setMaximumWidth(110)
 
         self.countdown_spin = QSpinBox()
         self.countdown_spin.setRange(0, 60)
         self.countdown_spin.setValue(3)
+        self.countdown_spin.setMaximumWidth(110)
 
         self.seed_edit = QLineEdit("")
+        self.seed_edit.setMaximumWidth(140)
 
         self.expert_mode_check = QCheckBox()
         self.expert_mode_check.setChecked(False)
@@ -89,34 +95,42 @@ class ScopeSettingsPage(QWidget):
         ):
             spin.setRange(0, 16)
             spin.setValue(value)
+            spin.setMaximumWidth(80)
 
         self.gui_gimbal_size_spin = QSpinBox()
         self.gui_gimbal_size_spin.setRange(150, 2000)
         self.gui_gimbal_size_spin.setValue(500)
+        self.gui_gimbal_size_spin.setMaximumWidth(110)
 
         self.gui_stick_zone_spin = QSpinBox()
         self.gui_stick_zone_spin.setRange(10, 1000)
         self.gui_stick_zone_spin.setValue(200)
+        self.gui_stick_zone_spin.setMaximumWidth(110)
 
         self.gui_stick_radius_spin = QSpinBox()
         self.gui_stick_radius_spin.setRange(1, 100)
         self.gui_stick_radius_spin.setValue(20)
+        self.gui_stick_radius_spin.setMaximumWidth(110)
 
         self.gui_stick_outline_width_spin = QSpinBox()
         self.gui_stick_outline_width_spin.setRange(1, 30)
         self.gui_stick_outline_width_spin.setValue(6)
+        self.gui_stick_outline_width_spin.setMaximumWidth(110)
 
         self.gui_zone_outline_width_spin = QSpinBox()
         self.gui_zone_outline_width_spin.setRange(1, 30)
         self.gui_zone_outline_width_spin.setValue(8)
+        self.gui_zone_outline_width_spin.setMaximumWidth(110)
 
         self.gui_gimbal_border_width_spin = QSpinBox()
         self.gui_gimbal_border_width_spin.setRange(1, 40)
         self.gui_gimbal_border_width_spin.setValue(12)
+        self.gui_gimbal_border_width_spin.setMaximumWidth(110)
 
         self.gui_gimbal_cross_width_spin = QSpinBox()
         self.gui_gimbal_cross_width_spin.setRange(1, 20)
         self.gui_gimbal_cross_width_spin.setValue(6)
+        self.gui_gimbal_cross_width_spin.setMaximumWidth(110)
 
         self.color_buttons = {}
         self.colors = {
@@ -134,17 +148,18 @@ class ScopeSettingsPage(QWidget):
         }
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
 
         self.tabs = QTabWidget()
-        root.addWidget(self.tabs)
+        outer_layout.addWidget(self.tabs)
 
         self.tab_experiment = QWidget()
         self.tab_runtime = QWidget()
         self.tab_appearance = QWidget()
 
         self.tabs.addTab(self.tab_experiment, "Experiment")
-        self.tabs.addTab(self.tab_runtime, "Runtime")
+        self.tabs.addTab(self.tab_runtime, "Runtime / Joystick")
         self.tabs.addTab(self.tab_appearance, "Appearance")
 
         self._build_experiment_tab()
@@ -152,25 +167,28 @@ class ScopeSettingsPage(QWidget):
         self._build_appearance_tab()
 
     def _build_experiment_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_experiment)
+        layout = QHBoxLayout(self.tab_experiment)
 
-        group = QGroupBox("SCoPE experiment")
-        form = QFormLayout(group)
-        form.addRow("Difficulty:", self.difficulty_edit)
-        form.addRow("Action timeout [s]:", self.timeout_spin)
-        form.addRow("Hold time [s]:", self.hold_time_spin)
-        form.addRow("Stick max:", self.stick_max_spin)
-        form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
-        form.addRow("Target completed actions:", self.max_actions_spin)
-        form.addRow("Countdown [s]:", self.countdown_spin)
-        form.addRow("Random seed:", self.seed_edit)
-        form.addRow("Expert mode:", self.expert_mode_check)
+        left_group = QGroupBox("Task")
+        left_form = QFormLayout(left_group)
+        left_form.addRow("Difficulty:", self.difficulty_edit)
+        left_form.addRow("Action timeout [s]:", self.timeout_spin)
+        left_form.addRow("Hold time [s]:", self.hold_time_spin)
+        left_form.addRow("Stick max:", self.stick_max_spin)
+        left_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
 
-        layout.addWidget(group)
-        layout.addStretch()
+        right_group = QGroupBox("Session")
+        right_form = QFormLayout(right_group)
+        right_form.addRow("Completed actions:", self.max_actions_spin)
+        right_form.addRow("Countdown [s]:", self.countdown_spin)
+        right_form.addRow("Random seed:", self.seed_edit)
+        right_form.addRow("Expert mode:", self.expert_mode_check)
+
+        layout.addWidget(left_group, 1)
+        layout.addWidget(right_group, 1)
 
     def _build_runtime_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_runtime)
+        layout = QHBoxLayout(self.tab_runtime)
 
         mapping_group = QGroupBox("Axis mapping")
         mapping_form = QFormLayout(mapping_group)
@@ -181,10 +199,10 @@ class ScopeSettingsPage(QWidget):
 
         joystick_group = QGroupBox("Joystick test")
         joystick_layout = QVBoxLayout(joystick_group)
-        btn_row = QHBoxLayout()
 
-        self.start_test_btn = QPushButton("Start joystick test")
-        self.stop_test_btn = QPushButton("Stop joystick test")
+        btn_row = QHBoxLayout()
+        self.start_test_btn = QPushButton("Start test")
+        self.stop_test_btn = QPushButton("Stop test")
         self.start_test_btn.clicked.connect(self._start_joystick_test)
         self.stop_test_btn.clicked.connect(self._stop_joystick_test)
 
@@ -194,17 +212,19 @@ class ScopeSettingsPage(QWidget):
 
         self.joystick_status = QTextEdit()
         self.joystick_status.setReadOnly(True)
-        self.joystick_status.setMinimumHeight(220)
+        self.joystick_status.setMinimumHeight(260)
 
         joystick_layout.addLayout(btn_row)
         joystick_layout.addWidget(self.joystick_status)
 
-        layout.addWidget(mapping_group)
-        layout.addWidget(joystick_group)
-        layout.addStretch()
+        layout.addWidget(mapping_group, 0)
+        layout.addWidget(joystick_group, 1)
 
     def _build_appearance_tab(self) -> None:
-        layout = QVBoxLayout(self.tab_appearance)
+        layout = QHBoxLayout(self.tab_appearance)
+
+        left_col = QVBoxLayout()
+        right_col = QVBoxLayout()
 
         size_group = QGroupBox("Geometry")
         size_form = QFormLayout(size_group)
@@ -234,36 +254,64 @@ class ScopeSettingsPage(QWidget):
         ]
 
         for row, (key, label) in enumerate(labels):
-            btn = QPushButton(self.colors[key])
+            btn = QPushButton()
+            btn.setMinimumWidth(130)
             btn.clicked.connect(lambda _, k=key: self._pick_color(k))
             self.color_buttons[key] = btn
             color_grid.addWidget(QLabel(label), row, 0)
             color_grid.addWidget(btn, row, 1)
 
-        preview_group = QGroupBox("Live preview")
+        preview_group = QGroupBox("Preview")
         preview_layout = QVBoxLayout(preview_group)
-
+        self.preview_status = QLabel("Live embedded preview will be added in the next step.")
+        self.preview_status.setWordWrap(True)
         self.refresh_preview_btn = QPushButton("Refresh preview")
         self.refresh_preview_btn.clicked.connect(self._update_preview)
-
-        self.preview_status = QLabel("Preview shows current appearance style.")
-        self.preview_host = QWidget()
-        self.preview_host.setMinimumHeight(420)
-
-        preview_layout.addWidget(self.refresh_preview_btn)
         preview_layout.addWidget(self.preview_status)
-        preview_layout.addWidget(self.preview_host)
+        preview_layout.addWidget(self.refresh_preview_btn)
+        preview_layout.addStretch()
 
-        layout.addWidget(size_group)
-        layout.addWidget(color_group)
-        layout.addWidget(preview_group, 1)
+        left_col.addWidget(size_group)
+        left_col.addStretch()
+
+        right_col.addWidget(color_group)
+        right_col.addWidget(preview_group)
+        right_col.addStretch()
+
+        layout.addLayout(left_col, 0)
+        layout.addLayout(right_col, 1)
 
     def _pick_color(self, key: str) -> None:
         color = QColorDialog.getColor()
         if color.isValid():
             self.colors[key] = color.name()
-            self.color_buttons[key].setText(color.name())
+            self._refresh_color_buttons()
             self._update_preview()
+
+    def _refresh_color_buttons(self) -> None:
+        for key, btn in self.color_buttons.items():
+            hex_color = self.colors[key]
+            btn.setText(hex_color)
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background-color: {hex_color};
+                    color: {self._ideal_text_color(hex_color)};
+                    border: 1px solid #666;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    font-weight: 600;
+                }}
+                """
+            )
+
+    def _ideal_text_color(self, hex_color: str) -> str:
+        hex_color = hex_color.lstrip("#")
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        brightness = (r * 299 + g * 587 + b * 114) / 1000
+        return "#000000" if brightness > 150 else "#ffffff"
 
     def _parse_deadzone(self) -> list[int]:
         parts = [p.strip() for p in self.deadzone_edit.text().replace(";", ",").split(",") if p.strip()]
@@ -287,6 +335,7 @@ class ScopeSettingsPage(QWidget):
             seed=int(seed_text) if seed_text else None,
             fullscreen=common.fullscreen_check.isChecked(),
             topmost=common.topmost_check.isChecked(),
+            debug_output=common.debug_output_check.isChecked(),
             joystick_index=common.joystick_index_spin.value(),
             break_axis=common.break_axis_spin.value(),
             axis_map={
@@ -363,9 +412,7 @@ class ScopeSettingsPage(QWidget):
             "label_color": cfg.label_color,
             "prompt_color": cfg.prompt_color,
         }
-
-        for key, btn in self.color_buttons.items():
-            btn.setText(self.colors[key])
+        self._refresh_color_buttons()
 
     def _append_joystick_text(self, text: str) -> None:
         self.joystick_status.setPlainText(text)
@@ -397,7 +444,6 @@ class ScopeSettingsPage(QWidget):
         try:
             pygame.event.pump()
 
-            axes_vals = []
             lines = [
                 f"Joystick name: {self.joystick.get_name()}",
                 f"Axes: {self.joystick.get_numaxes()}",
@@ -407,7 +453,6 @@ class ScopeSettingsPage(QWidget):
 
             for i in range(self.joystick.get_numaxes()):
                 value = self.joystick.get_axis(i)
-                axes_vals.append(value)
                 lines.append(f"Axis {i}: {value:+.4f}")
 
             self._append_joystick_text("\n".join(lines))
@@ -441,5 +486,4 @@ class ScopeSettingsPage(QWidget):
             self._append_joystick_text("Joystick test stopped.")
 
     def _update_preview(self) -> None:
-        # tu zatiaľ len placeholder, lebo embedded tkinter inside PyQt spravíme ako ďalší krok
-        self.preview_status.setText("Preview refresh requested. Embedded live preview doplníme v ďalšom kroku.")
+        self.preview_status.setText("Preview refresh requested. Embedded live preview will be added next.")

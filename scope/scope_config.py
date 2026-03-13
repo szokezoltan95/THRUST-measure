@@ -9,6 +9,7 @@ from typing import Any
 @dataclass
 class ScopeConfig:
     # experiment
+    debug_output: bool = False
     user: str = "Pilot"
     difficulty: str = "HARD"
     action_timeout_s: float = 3.0
