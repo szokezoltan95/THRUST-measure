@@ -1,6 +1,6 @@
 # THRUST
 
-**THRUST (Training Hub for UAV Research, Simulation and Testing)** is a modular platform for UAV control training, human performance experiments, and flight control evaluation.
+**THRUST (Testing Hub for Research in UAV Simulation and Training)** is a modular platform for UAV control training, human performance experiments, and flight control evaluation.
 
 The system integrates multiple experimental tools into a single environment with a unified configuration interface.
 
