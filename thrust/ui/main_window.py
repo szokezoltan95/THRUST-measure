@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
 
-        self.subtitle_label = QLabel("Training Hub for UAV Research, Simulation and Testing")
+        self.subtitle_label = QLabel("Testing Hub for Research in UAV Simulation and Training")
         self.subtitle_label.setStyleSheet("color: gray;")
 
         self.common_page = CommonSettingsPage()
@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         root_layout.addLayout(header_layout)
         root_layout.addWidget(self.splitter, 1)
         root_layout.addLayout(button_layout)
-        
+
         self.save_button.clicked.connect(self._save_profile)
         self.load_button.clicked.connect(self._load_profile)
 
@@ -185,7 +185,7 @@ class MainWindow(QMainWindow):
                 "Run failed",
                 f"{type(exc).__name__}: {exc}",
             )
-            
+
     def _default_scope_profile_dir(self) -> Path:
         return Path.cwd() / "profiles" / "scope"
 
