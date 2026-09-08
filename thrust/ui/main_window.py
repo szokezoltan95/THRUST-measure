@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -302,7 +303,7 @@ class MainWindow(QMainWindow):
             uploaded = self.client.upload_measurement(
                 participant_id=str(participant_id),
                 test_definition_id=str(test["id"]),
-                started_at=analysis.get("started_at") or __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                started_at=analysis.get("started_at") or datetime.now(timezone.utc).isoformat(),
                 raw_log_path=raw_path,
                 analysis_data=analysis,
             )
