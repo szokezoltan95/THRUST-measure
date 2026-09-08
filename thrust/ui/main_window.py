@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -275,6 +277,7 @@ class MainWindow(QMainWindow):
             self.append_log(
                 f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
             )
+            step_path = ""
             if self.mode_combo.currentIndex() == 0:
                 from thrust.dummy_runner import run_dummy
 
@@ -288,11 +291,24 @@ class MainWindow(QMainWindow):
             else:
                 session = run_scope(config, log_callback=self.append_log)
                 raw_path = session.logfile_path
+                step_path = session.step_path
 
             if not raw_path:
                 raise RuntimeError("Meranie nevytvorilo raw log, preto ho nemožno nahrať.")
 
             analysis = analyze_scope_log(raw_path)
+            if step_path and Path(step_path).is_file():
+                with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
+                    reader = csv.DictReader(handle, delimiter="\\t")
+                    curves = {name: [] for name in ("Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD", "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD")}
+                    for row in reader:
+                        for name in curves:
+                            if row.get(name) not in (None, ""):
+                                curves[name].append(float(row[name]))
+                    analysis["normalized_step_response"] = {
+                        "schema_version": "scope-normalized-response-v1",
+                        "columns": curves,
+                    }
             participant_id = self.participant_combo.currentData()
             if not participant_id:
                 raise RuntimeError("Účastník nemá platné serverové ID.")
