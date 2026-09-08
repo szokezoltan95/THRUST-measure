@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from thrust.analysis.scope_log import analyze_scope_log
+
 
 _FIXTURE_PATH = Path(__file__).resolve().parent / "assets" / "dummy_scope_log.gz.b64"
 
@@ -35,6 +37,12 @@ def run_dummy(
     raw_path = output_dir / f"SCoPE_dummy_{safe_participant}_{safe_test}_{stamp}.txt"
     raw_path.write_bytes(raw_log)
 
+    analysis = analyze_scope_log(raw_path)
+    raw_path.with_name(f"{raw_path.stem}.analysis.json").write_text(
+        json.dumps(analysis, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
     metadata = {
         "source": "bundled_dummy_fixture",
         "fixture": _FIXTURE_PATH.name,
@@ -51,6 +59,11 @@ def run_dummy(
 
     if log_callback:
         log_callback(f"Dummy fixture copied to: {raw_path}")
+        log_callback(
+            f"Validated {analysis['sample_count']} samples over "
+            f"{analysis['duration_s']:.2f} s "
+            f"({analysis['estimated_sampling_hz']:.1f} Hz)."
+        )
         log_callback("No joystick was accessed; this run is suitable for GUI and pipeline testing.")
 
     return raw_path
