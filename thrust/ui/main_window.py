@@ -82,12 +82,15 @@ class MainWindow(QMainWindow):
         self.participant_combo.setEnabled(False)
 
         self.test_combo = QComboBox()
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
         self.test_combo.setPlaceholderText("Connect to load tests")
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
 
         selection_group = QGroupBox("Measurement session")
         selection_form = QFormLayout(selection_group)
+        selection_form.addRow("Execution mode:", self.mode_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
@@ -270,7 +273,18 @@ class MainWindow(QMainWindow):
             self.append_log(
                 f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
             )
-            run_scope(config, log_callback=self.append_log)
+            if self.mode_combo.currentIndex() == 0:
+                from thrust.dummy_runner import run_dummy
+
+                run_dummy(
+                    participant_code=participant_code,
+                    test_code=test["test_code"],
+                    test_version=test["version"],
+                    output_root=config.output_root,
+                    log_callback=self.append_log,
+                )
+            else:
+                run_scope(config, log_callback=self.append_log)
             self.append_log("Measurement finished. Raw and derived files remain local for now.")
         except Exception as exc:
             self.append_log(f"Measurement failed: {type(exc).__name__}: {exc}")
