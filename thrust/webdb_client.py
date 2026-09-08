@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from http.cookiejar import CookieJar
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
@@ -16,7 +18,7 @@ class WebDbError(RuntimeError):
 
 
 class WebDbClient:
-    def __init__(self, base_url: str, *, timeout: float = 10.0) -> None:
+    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/") + "/"
         self.timeout = timeout
         self.csrf_token: str | None = None
@@ -51,6 +53,33 @@ class WebDbClient:
             raise WebDbError("The test manifest is missing its test definition.")
         return manifest
 
+    def upload_measurement(
+        self,
+        *,
+        participant_id: str,
+        test_definition_id: str,
+        started_at: str,
+        raw_log_path: str | Path,
+        analysis_data: dict[str, Any] | None = None,
+        status: str = "recorded",
+    ) -> dict[str, Any]:
+        path = Path(raw_log_path)
+        raw_bytes = path.read_bytes()
+        return self._request_json(
+            "/api/admin/measurements",
+            method="POST",
+            body={
+                "participant_id": participant_id,
+                "test_definition_id": test_definition_id,
+                "started_at": started_at,
+                "status": status,
+                "source_file_name": path.name,
+                "raw_content_type": "text/tab-separated-values",
+                "raw_log_base64": base64.b64encode(raw_bytes).decode("ascii"),
+                "analysis_data": analysis_data,
+            },
+        )
+
     def _request_list(self, path: str) -> list[dict[str, Any]]:
         data = self._request(path)
         if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
@@ -77,6 +106,8 @@ class WebDbClient:
         body: dict[str, Any] | None = None,
     ) -> Any:
         headers = {"Accept": "application/json"}
+        if self.csrf_token:
+            headers["X-CSRF-Token"] = self.csrf_token
         encoded_body: bytes | None = None
         if body is not None:
             encoded_body = json.dumps(body).encode("utf-8")
