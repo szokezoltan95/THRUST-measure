@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from scope.scope_config import ScopeConfig
+from thrust.analysis.scope_log import analyze_scope_log
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.webdb_client import WebDbClient, WebDbError
@@ -276,7 +277,7 @@ class MainWindow(QMainWindow):
             if self.mode_combo.currentIndex() == 0:
                 from thrust.dummy_runner import run_dummy
 
-                run_dummy(
+                raw_path = run_dummy(
                     participant_code=participant_code,
                     test_code=test["test_code"],
                     test_version=test["version"],
@@ -284,8 +285,32 @@ class MainWindow(QMainWindow):
                     log_callback=self.append_log,
                 )
             else:
-                run_scope(config, log_callback=self.append_log)
-            self.append_log("Measurement finished. Raw and derived files remain local for now.")
+                session = run_scope(config, log_callback=self.append_log)
+                raw_path = session.logfile_path
+
+            if not raw_path:
+                raise RuntimeError("Meranie nevytvorilo raw log, preto ho nemožno nahrať.")
+
+            analysis = analyze_scope_log(raw_path)
+            participant_id = self.participant_combo.currentData()
+            if not participant_id:
+                raise RuntimeError("Účastník nemá platné serverové ID.")
+
+            if self.client is None:
+                raise RuntimeError("WebDB klient nie je pripojený.")
+
+            uploaded = self.client.upload_measurement(
+                participant_id=str(participant_id),
+                test_definition_id=str(test["id"]),
+                started_at=analysis.get("started_at") or __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+                raw_log_path=raw_path,
+                analysis_data=analysis,
+            )
+            self.append_log(
+                f"Measurement uploaded: {uploaded.get('id', 'unknown')} "
+                f"({uploaded.get('raw_size_bytes', 0)} bytes, SHA-256 {uploaded.get('raw_sha256', '')})."
+            )
+            self.append_log("Measurement finished and archived in WebDB.")
         except Exception as exc:
             self.append_log(f"Measurement failed: {type(exc).__name__}: {exc}")
             QMessageBox.critical(self, "Measurement failed", f"{type(exc).__name__}: {exc}")
