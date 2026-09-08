@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 
-_FIXTURE_PATH = Path(__file__).resolve().parent.parent / "assets" / "dummy_scope_log.gz.b64"
+_FIXTURE_PATH = Path(__file__).resolve().parent / "assets" / "dummy_scope_log.gz.b64"
 
 
 def run_dummy(
