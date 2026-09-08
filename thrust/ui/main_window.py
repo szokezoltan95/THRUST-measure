@@ -297,7 +297,7 @@ class MainWindow(QMainWindow):
                 raise RuntimeError("Meranie nevytvorilo raw log, preto ho nemožno nahrať.")
 
             analysis = analyze_scope_log(raw_path)
-            if step_path and Path(step_path).is_file():
+            if step_path and Path(step_path).is_file() and "normalized_step_response" not in analysis:
                 with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
                     reader = csv.DictReader(handle, delimiter="\\t")
                     curves = {name: [] for name in ("Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD", "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD")}
