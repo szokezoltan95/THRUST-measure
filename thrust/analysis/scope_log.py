@@ -140,7 +140,7 @@ def _normalized_channel_curve(
             for position in range(index, end)
         ]
         segments.append(segment)
-        metric_rows.append(_step_metrics(segment_time, segment, [0.0] * len(segment)))
+        metric_rows.append(_step_metrics(segment_time, segment, []))
     mean_curve: list[float] = []
     median_curve: list[float] = []
     std_curve: list[float] = []
@@ -153,13 +153,17 @@ def _normalized_channel_curve(
         median_curve.append(median(values))
         std_curve.append(math.sqrt(sum((value - average) ** 2 for value in values) / len(values)))
     curve_time = [index / sampling_hz for index in range(len(mean_curve))]
+    aggregate = _aggregate_step_metrics(metric_rows)
+    if std_curve:
+        aggregate["mean_std"] = sum(std_curve) / len(std_curve)
+        aggregate["mean_std_mean"] = aggregate["mean_std"]
     return {
         "mean": mean_curve,
         "median": median_curve,
         "std": std_curve,
         "time_s": curve_time,
         "transition_count": len(segments),
-        "metrics": _aggregate_step_metrics(metric_rows),
+        "metrics": aggregate,
     }
 
 
