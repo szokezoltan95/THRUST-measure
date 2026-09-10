@@ -324,7 +324,7 @@ class ScopeSettingsPage(QWidget):
 
         return ScopeConfig(
             user=common.user_edit.text().strip() or "Pilot",
-            difficulty=self.difficulty_edit.text().strip() or "HARD",
+            difficulty=self.difficulty_edit.text().strip().lower() or "hard",
             action_timeout_s=self.timeout_spin.value(),
             hold_time_s=self.hold_time_spin.value(),
             fps=common.fps_spin.value(),
