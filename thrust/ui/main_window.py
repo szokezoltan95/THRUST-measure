@@ -220,6 +220,8 @@ class MainWindow(QMainWindow):
             raise ValueError("Test configuration must be a JSON object.")
 
         config_data = dict(source)
+        for obsolete_key in ("user", "profile_name", "expert_mode", "output_root", "use_dated_subfolders"):
+            config_data.pop(obsolete_key, None)
         legacy_mapping = {
             "sampling_hz": "fps",
             "timeout_s": "action_timeout_s",
