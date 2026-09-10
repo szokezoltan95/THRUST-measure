@@ -77,7 +77,7 @@ def request_new_action(
     config: ScopeConfig,
     log_callback=None,
 ):
-    if difficulty == "EASY":
+    if difficulty == "easy":
         if shuffle_sequence < 15:
             shuffle_sequence += 1
         else:
@@ -85,7 +85,7 @@ def request_new_action(
             random.shuffle(action_shuffle)
         action_request = actions[action_shuffle[shuffle_sequence]]
 
-    elif difficulty == "MEDIUM":
+    elif difficulty == "medium":
         stick_choice = random.choice([0, 1])
         deflx_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
@@ -98,7 +98,7 @@ def request_new_action(
         else:
             action_request = [0, 0, deflx_choice, defly_choice]
 
-    elif difficulty == "HARD":
+    elif difficulty == "hard":
         aile_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
         )
@@ -113,7 +113,7 @@ def request_new_action(
         )
         action_request = [aile_choice, elev_choice, thro_choice, rudd_choice]
 
-    elif difficulty == "ULTRA":
+    elif difficulty == "ultra":
         action_request = [
             random.randint(-stick_max, stick_max),
             random.randint(-stick_max, stick_max),
@@ -621,7 +621,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
         if evlfile is not None:
             for item in evmap:
                 if item == "Action":
-                    if config.difficulty == "EASY":
+                    if config.difficulty == "easy":
                         evlfile.write(item)
                     else:
                         evlfile.write("AREQ\tEREQ\tTREQ\tRREQ")
@@ -744,7 +744,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                 if inzone_timer >= hold_time_frames:
                     action_completed = True
                     if evlfile is not None:
-                        if config.difficulty == "EASY":
+                        if config.difficulty == "easy":
                             evlstring = (
                                 f"{(sample_time - action_start)/1_000_000_000}\t"
                                 f"{action_shuffle[shuffle_sequence]}\t1\t{total_mistakes}\n"
@@ -769,7 +769,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                     action_completed = True
                     total_mistakes += 1
                     if evlfile is not None:
-                        if config.difficulty == "EASY":
+                        if config.difficulty == "easy":
                             evlstring = (
                                 f"{(sample_time - action_start)/1_000_000_000}\t"
                                 f"{action_shuffle[shuffle_sequence]}\t0\t{total_mistakes}\n"
