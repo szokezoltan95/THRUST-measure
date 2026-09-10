@@ -11,7 +11,7 @@ class ScopeConfig:
     # experiment
     debug_output: bool = False
     user: str = "Pilot"
-    difficulty: str = "HARD"
+    difficulty: str = "hard"
     action_timeout_s: float = 3.0
     hold_time_s: float = 0.5
     fps: int = 100
@@ -75,7 +75,7 @@ class ScopeConfig:
     prompt_color: str = "#ff0000"
 
     def validate(self) -> None:
-        allowed = {"EASY", "MEDIUM", "HARD", "ULTRA"}
+        allowed = {"easy", "medium", "hard", "ultra"}
         if self.difficulty not in allowed:
             raise ValueError(f"difficulty must be one of {sorted(allowed)}")
         if not self.user.strip():
@@ -121,7 +121,7 @@ class ScopeConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ScopeConfig":
-        return cls(**data)
+        normalized = dict(data)\n        if isinstance(normalized.get("difficulty"), str):\n            normalized["difficulty"] = normalized["difficulty"].lower()\n        return cls(**normalized)
 
     def save_json(self, path: str | Path) -> None:
         path = Path(path)
