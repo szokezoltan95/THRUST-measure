@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -88,6 +89,9 @@ class MainWindow(QMainWindow):
         self.test_combo = QComboBox()
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
+        self.config_source_combo = QComboBox()
+        self.config_source_combo.addItems(["WebDB · synchronizovaná konfigurácia", "Lokálne · núdzové nastavenie"])
+        self.config_source_combo.currentIndexChanged.connect(self._on_configuration_source_changed)
         self.test_combo.setPlaceholderText("Connect to load tests")
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
@@ -95,6 +99,7 @@ class MainWindow(QMainWindow):
         selection_group = QGroupBox("Measurement session")
         selection_form = QFormLayout(selection_group)
         selection_form.addRow("Execution mode:", self.mode_combo)
+        selection_form.addRow("Configuration source:", self.config_source_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
@@ -209,44 +214,88 @@ class MainWindow(QMainWindow):
             self.test_summary.setText(f"Configuration could not be loaded: {exc}")
             self.append_log(f"Test configuration failed: {exc}")
 
-    def _apply_web_configuration(self, test: dict[str, Any]) -> None:
+    def _configuration_from_web_test(self, test: dict[str, Any]) -> ScopeConfig:
         source = test.get("configuration")
         if not isinstance(source, dict):
             raise ValueError("Test configuration must be a JSON object.")
 
-        config = ScopeConfig()
-        simple_mapping = {
+        config_data = dict(source)
+        legacy_mapping = {
             "sampling_hz": "fps",
-            "difficulty": "difficulty",
             "timeout_s": "action_timeout_s",
-            "hold_time_s": "hold_time_s",
-            "max_completed_actions": "max_completed_actions",
         }
-        for source_key, target_key in simple_mapping.items():
-            if source_key in source:
-                setattr(config, target_key, source[source_key])
+        for source_key, target_key in legacy_mapping.items():
+            if source_key in config_data and target_key not in config_data:
+                config_data[target_key] = config_data[source_key]
 
-        visual = source.get("visual", {})
+        visual = config_data.pop("visual", None)
         if isinstance(visual, dict):
             visual_mapping = {
                 "screen_bg": "screen_background",
                 "gimbal_bg": "gimbal_background",
-                "stick_outline": "stick_outline",
-                "stick_fill": "stick_fill",
-                "zone_idle_outline": "zone_idle_outline",
-                "zone_idle_fill": "zone_idle_fill",
-                "zone_ok_outline": "zone_ok_outline",
-                "zone_ok_fill": "zone_ok_fill",
                 "grid": "grid_color",
                 "label": "label_color",
                 "prompt": "prompt_color",
             }
             for source_key, target_key in visual_mapping.items():
-                if source_key in visual:
-                    setattr(config, target_key, visual[source_key])
+                if source_key in visual and target_key not in config_data:
+                    config_data[target_key] = visual[source_key]
+            for key in ("stick_outline", "stick_fill", "zone_idle_outline", "zone_idle_fill", "zone_ok_outline", "zone_ok_fill"):
+                if key in visual and key not in config_data:
+                    config_data[key] = visual[key]
 
+        known_fields = {item.name for item in fields(ScopeConfig)}
+        config_data = {key: value for key, value in config_data.items() if key in known_fields}
+        config = ScopeConfig.from_dict(config_data)
         config.validate()
-        self.scope_page.load_scope_config(config)
+        return config
+
+    def _apply_web_configuration(self, test: dict[str, Any]) -> None:
+        config = self._configuration_from_web_test(test)
+        self.scope_page.apply_scope_config(config, self.common_page)
+
+    def _on_configuration_source_changed(self, index: int) -> None:
+        if index == 0 and self.current_manifest is not None:
+            try:
+                self._apply_web_configuration(self.current_manifest["test"])
+                self.test_summary.setText("WebDB konfigurácia je aktívna. Lokálne nastavenia sa pri spustení ignorujú.")
+                self.append_log("Configuration source: WebDB.")
+            except (KeyError, TypeError, ValueError) as exc:
+                self.test_summary.setText(f"Konfiguráciu WebDB sa nepodarilo použiť: {exc}")
+                self.run_button.setEnabled(False)
+        elif index == 1:
+            self.test_summary.setText("Núdzový lokálny režim. Zmeny v Advanced settings sa nesynchronizujú do WebDB.")
+            self.append_log("Configuration source: local emergency settings.")
+
+    def _load_selected_test(self, _index: int = -1) -> None:
+        if self.client is None or self.test_combo.currentIndex() < 0:
+            self.run_button.setEnabled(False)
+            return
+
+        selected = self.test_combo.currentData()
+        if not isinstance(selected, dict):
+            self.run_button.setEnabled(False)
+            return
+
+        try:
+            self.current_manifest = self.client.get_test_configuration(selected["id"])
+            test = self.current_manifest["test"]
+            if self.config_source_combo.currentIndex() == 0:
+                self._apply_web_configuration(test)
+            self.test_summary.setText(
+                f'Loaded {test["name"]} · version {test["version"]}\n'
+                f'Analysis profile: {test["analysis_profile"]}\n'
+                + ("The measurement engine will use the WebDB version-pinned configuration."
+                   if self.config_source_combo.currentIndex() == 0
+                   else "Local emergency settings are selected; WebDB configuration will not be applied.")
+            )
+            self.run_button.setEnabled(self.participant_combo.currentIndex() >= 0)
+            self.append_log(f'Loaded test manifest: {test["test_code"]} v{test["version"]}')
+        except (WebDbError, KeyError, TypeError, ValueError) as exc:
+            self.current_manifest = None
+            self.run_button.setEnabled(False)
+            self.test_summary.setText(f"Configuration could not be loaded: {exc}")
+            self.append_log(f"Test configuration failed: {exc}")
 
     def _open_advanced(self) -> None:
         if self.advanced_dialog is None:
@@ -269,7 +318,10 @@ class MainWindow(QMainWindow):
         try:
             from thrust.runners.scope_runner import run_scope
 
-            config = self.scope_page.build_scope_config(self.common_page)
+            if self.config_source_combo.currentIndex() == 0:
+                config = self._configuration_from_web_test(test)
+            else:
+                config = self.scope_page.build_scope_config(self.common_page)
             config.user = participant_code
             config.profile_name = f'{test["test_code"]}_v{test["version"]}'
             config.validate()
