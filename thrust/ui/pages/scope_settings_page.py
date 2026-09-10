@@ -44,7 +44,7 @@ class ScopeSettingsPage(QWidget):
         self.load_scope_config(ScopeConfig())
 
     def _build_variables(self) -> None:
-        self.difficulty_edit = QLineEdit("HARD")
+        self.difficulty_edit = QLineEdit("hard")
         self.difficulty_edit.setMaximumWidth(140)
 
         self.timeout_spin = QDoubleSpinBox()
