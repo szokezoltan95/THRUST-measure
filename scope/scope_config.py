@@ -75,6 +75,8 @@ class ScopeConfig:
     prompt_color: str = "#ff0000"
 
     def validate(self) -> None:
+        if isinstance(self.difficulty, str):
+            self.difficulty = self.difficulty.lower()
         allowed = {"easy", "medium", "hard", "ultra"}
         if self.difficulty not in allowed:
             raise ValueError(f"difficulty must be one of {sorted(allowed)}")
@@ -121,7 +123,10 @@ class ScopeConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ScopeConfig":
-        normalized = dict(data)\n        if isinstance(normalized.get("difficulty"), str):\n            normalized["difficulty"] = normalized["difficulty"].lower()\n        return cls(**normalized)
+        normalized = dict(data)
+        if isinstance(normalized.get("difficulty"), str):
+            normalized["difficulty"] = normalized["difficulty"].lower()
+        return cls(**normalized)
 
     def save_json(self, path: str | Path) -> None:
         path = Path(path)
