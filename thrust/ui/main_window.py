@@ -217,6 +217,61 @@ class MainWindow(QMainWindow):
             self.test_summary.setText(f"Configuration could not be loaded: {exc}")
             self.append_log(f"Test configuration failed: {exc}")
 
+    def _configuration_from_web_test(self, test: dict[str, Any]) -> ScopeConfig:
+        source = test.get("configuration")
+        if not isinstance(source, dict):
+            raise ValueError("Test configuration must be a JSON object.")
+
+        config_data = dict(source)
+        for obsolete_key in ("user", "profile_name", "expert_mode", "output_root", "use_dated_subfolders"):
+            config_data.pop(obsolete_key, None)
+        legacy_mapping = {
+            "sampling_hz": "fps",
+            "timeout_s": "action_timeout_s",
+        }
+        for source_key, target_key in legacy_mapping.items():
+            if source_key in config_data and target_key not in config_data:
+                config_data[target_key] = config_data[source_key]
+
+        visual = config_data.pop("visual", None)
+        if isinstance(visual, dict):
+            visual_mapping = {
+                "screen_bg": "screen_background",
+                "gimbal_bg": "gimbal_background",
+                "grid": "grid_color",
+                "label": "label_color",
+                "prompt": "prompt_color",
+            }
+            for source_key, target_key in visual_mapping.items():
+                if source_key in visual and target_key not in config_data:
+                    config_data[target_key] = visual[source_key]
+            for key in ("stick_outline", "stick_fill", "zone_idle_outline", "zone_idle_fill", "zone_ok_outline", "zone_ok_fill"):
+                if key in visual and key not in config_data:
+                    config_data[key] = visual[key]
+
+        known_fields = {item.name for item in fields(ScopeConfig)}
+        config_data = {key: value for key, value in config_data.items() if key in known_fields}
+        config = ScopeConfig.from_dict(config_data)
+        config.validate()
+        return config
+
+    def _apply_web_configuration(self, test: dict[str, Any]) -> None:
+        config = self._configuration_from_web_test(test)
+        self.scope_page.apply_scope_config(config, self.common_page)
+
+    def _on_configuration_source_changed(self, index: int) -> None:
+        if index == 0 and self.current_manifest is not None:
+            try:
+                self._apply_web_configuration(self.current_manifest["test"])
+                self.test_summary.setText("WebDB konfigurácia je aktívna. Lokálne nastavenia sa pri spustení ignorujú.")
+                self.append_log("Configuration source: WebDB.")
+            except (KeyError, TypeError, ValueError) as exc:
+                self.test_summary.setText(f"Konfiguráciu WebDB sa nepodarilo použiť: {exc}")
+                self.run_button.setEnabled(False)
+        elif index == 1:
+            self.test_summary.setText("Núdzový lokálny režim. Zmeny v Advanced settings sa nesynchronizujú do WebDB.")
+            self.append_log("Configuration source: local emergency settings.")
+
     def _open_advanced(self) -> None:
         if self.advanced_dialog is None:
             self.advanced_dialog = AdvancedSettingsDialog(
