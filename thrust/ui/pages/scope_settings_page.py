@@ -248,25 +248,5 @@ class ScopeSettingsPage(QWidget):
         self._refresh_color_buttons()
 
     def apply_scope_config(self, cfg: ScopeConfig, common_page) -> None:
-        common_page.load_common_dict(
-            {
-                "user": cfg.user,
-                "fullscreen": cfg.fullscreen,
-                "topmost": cfg.topmost,
-                "debug_output": cfg.debug_output,
-                "joystick_index": cfg.joystick_index,
-                "break_axis": cfg.break_axis,
-                "axis_map": cfg.axis_map,
-                "output_root": cfg.output_root,
-                "profile_name": cfg.profile_name,
-                "use_dated_subfolders": cfg.use_dated_subfolders,
-                "save_raw_log": cfg.save_raw_log,
-                "save_action_log": cfg.save_action_log,
-                "save_step_file": cfg.save_step_file,
-                "save_graph_pdf": cfg.save_graph_pdf,
-                "auto_open_graph": cfg.auto_open_graph,
-                "run_evaluation": cfg.run_evaluation,
-                "show_graph": cfg.show_graph,
-            }
-        )
+        # WebDB owns test parameters only. Local runtime/joystick/output controls stay untouched.
         self.load_scope_config(cfg)
