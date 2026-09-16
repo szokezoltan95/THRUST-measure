@@ -6,7 +6,7 @@ import os
 os.environ.setdefault("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1")
 
 import pygame
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -27,6 +27,9 @@ from PyQt6.QtWidgets import (
 class CommonSettingsPage(QWidget):
     """Local-only runtime, hardware diagnostics and output settings."""
 
+    joystick_status_changed = pyqtSignal(bool, str)
+    joystick_values_changed = pyqtSignal(object)
+
     def __init__(self) -> None:
         super().__init__()
         self.joystick = None
@@ -34,6 +37,7 @@ class CommonSettingsPage(QWidget):
         self.axis_indicators: list[QLabel] = []
         self.button_indicators: list[QLabel] = []
         self.hat_indicators: list[QLabel] = []
+        self.latest_axis_values: list[float] = []
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._poll_joystick)
@@ -179,6 +183,26 @@ class CommonSettingsPage(QWidget):
         self.tabs.addTab(joystick_tab, "Joystick diagnostics")
         self.tabs.addTab(output_tab, "Output")
 
+    def available_joysticks(self) -> list[str]:
+        try:
+            pygame.init()
+            pygame.joystick.init()
+            return [pygame.joystick.Joystick(index).get_name() for index in range(pygame.joystick.get_count())]
+        except Exception:
+            return []
+
+    def auto_connect_joystick(self) -> bool:
+        devices = self.available_joysticks()
+        if len(devices) == 1:
+            self.joystick_index_spin.setValue(0)
+        return bool(devices) and self._start_joystick_test()
+
+    def select_joystick(self, index: int, connect: bool = True) -> bool:
+        self.joystick_index_spin.setValue(index)
+        if connect:
+            return self._start_joystick_test()
+        return True
+
     def _browse_output_root(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select output root", self.output_root_edit.text().strip())
         if path:
@@ -270,10 +294,16 @@ class CommonSettingsPage(QWidget):
             self.joystick = pygame.joystick.Joystick(index)
             self.joystick.init()
             self.joystick_active = True
-            self.device_status.setText(f"Connected: {self.joystick.get_name()}")
+            status = f"Connected: {self.joystick.get_name()}"
+            self.device_status.setText(status)
+            self.joystick_status_changed.emit(True, status)
             self.timer.start(50)
+            return True
         except Exception as exc:
-            self.device_status.setText(f"Joystick start failed: {exc}")
+            status = f"Joystick unavailable: {exc}"
+            self.device_status.setText(status)
+            self.joystick_status_changed.emit(False, status)
+            return False
 
     def _poll_joystick(self) -> None:
         if not self.joystick_active or self.joystick is None:
@@ -281,6 +311,8 @@ class CommonSettingsPage(QWidget):
         try:
             pygame.event.pump()
             axis_count = self.joystick.get_numaxes()
+            self.latest_axis_values = [float(self.joystick.get_axis(index)) for index in range(axis_count)]
+            self.joystick_values_changed.emit(self.latest_axis_values)
             self._clear_grid(self.axis_grid, self.axis_indicators)
             for index in range(axis_count):
                 value = float(self.joystick.get_axis(index))
@@ -325,5 +357,7 @@ class CommonSettingsPage(QWidget):
             pygame.quit()
         except Exception:
             pass
+        self.joystick_status_changed.emit(False, "Joystick test is stopped.")
+        self.joystick_values_changed.emit([])
         if clear_text:
             self.device_status.setText("Joystick test is stopped.")
