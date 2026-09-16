@@ -70,7 +70,7 @@ class LoginDialog(QDialog):
 
 
 class AdvancedSettingsDialog(QDialog):
-    """Offline test settings only; runtime and joystick controls stay in the main window."""
+    """State-aware settings dialog for runtime and, when offline, test settings."""
 
     def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
         super().__init__(parent)
@@ -199,6 +199,7 @@ class MainWindow(QMainWindow):
         right = QVBoxLayout()
         right.setSpacing(10)
         right.addWidget(self.joystick_panel)
+        self.joystick_panel.setVisible(True)
         right.addStretch()
 
         columns = QGridLayout()
@@ -352,7 +353,7 @@ class MainWindow(QMainWindow):
         config_data = dict(source)
         for obsolete_key in (
             "user", "profile_name", "expert_mode", "output_root", "use_dated_subfolders",
-            "joystick_index", "break_axis", "axis_map", "deadzone",
+            "joystick_index", "break_axis", "reset_axis", "axis_map", "deadzone",
         ):
             config_data.pop(obsolete_key, None)
 
