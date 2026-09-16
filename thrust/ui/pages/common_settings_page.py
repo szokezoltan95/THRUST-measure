@@ -249,8 +249,13 @@ class CommonSettingsPage(QWidget):
     def _indicator_style(self, active: bool, value: float = 0.0) -> str:
         if active:
             return "QLabel { background: #49b883; color: #07140d; border: 1px solid #9ff0c2; border-radius: 4px; padding: 3px 7px; }"
-        intensity = int(30 + min(180, abs(value) * 150))
-        return f"QLabel {{ background: rgb({intensity // 3}, {intensity // 3}, {intensity}); color: #e7edf2; border: 1px solid #59636e; border-radius: 4px; padding: 3px 7px; }}"
+        if value < -0.05:
+            background, border = "#2459a6", "#5d9cf2"
+        elif value > 0.05:
+            background, border = "#a8661d", "#f0ad55"
+        else:
+            background, border = "#263442", "#59636e"
+        return f"QLabel {{ background: {background}; color: #e7edf2; border: 1px solid {border}; border-radius: 4px; padding: 3px 7px; }}"
 
     def _clear_grid(self, grid: QGridLayout, widgets: list[QLabel]) -> None:
         for widget in widgets:
