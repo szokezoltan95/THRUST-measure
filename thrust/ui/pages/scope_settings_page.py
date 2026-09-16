@@ -193,7 +193,7 @@ class ScopeSettingsPage(QWidget):
             break_axis=common_data["break_axis"],
             axis_map=common_data["axis_map"],
             output_root=common_data["output_root"],
-            profile_name=common_data["profile_name"],
+            profile_name=common_data.get("profile_name", "local"),
             use_dated_subfolders=common_data["use_dated_subfolders"],
             save_raw_log=common_data["save_raw_log"],
             save_action_log=common_data["save_action_log"],
