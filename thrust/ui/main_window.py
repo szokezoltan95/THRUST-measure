@@ -296,6 +296,20 @@ class MainWindow(QMainWindow):
             return
         self.common_page.select_joystick(int(device_index), connect=True)
 
+    def _set_joystick_status(self, connected: bool, status: str) -> None:
+        self.joystick_led.setText("● CONNECTED" if connected else "● DISCONNECTED")
+        self.joystick_led.setStyleSheet(
+            "font-weight: 700; color: #52d18a;" if connected else "font-weight: 700; color: #ed6262;"
+        )
+        self.joystick_status_text.setText(status)
+
+    def _update_joystick_feedback(self, values: object) -> None:
+        if not isinstance(values, list):
+            return
+        for index, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+            value = float(values[index]) if index < len(values) else 0.0
+            self.joystick_bars[name].setValue(int(max(-1.0, min(1.0, value)) * 100))
+
     def _open_login(self) -> None:
         dialog = LoginDialog(
             self.server_edit.text().strip() or DEFAULT_WEBDB_URL,
