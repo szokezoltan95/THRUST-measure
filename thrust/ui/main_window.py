@@ -140,7 +140,6 @@ class MainWindow(QMainWindow):
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
-        self.mode_combo.model().item(1).setEnabled(False)
 
         selection_group = QGroupBox("Test selection")
         selection_form = QFormLayout(selection_group)
@@ -277,7 +276,7 @@ class MainWindow(QMainWindow):
             self.joystick_selector.blockSignals(False)
             self.joystick_device_names = devices
 
-        self._set_real_mode_enabled(bool(devices))
+        self._update_run_availability(bool(devices))
         if not devices:
             if self.common_page.joystick_active:
                 self.common_page.stop_joystick()
@@ -285,11 +284,9 @@ class MainWindow(QMainWindow):
         elif not self.common_page.joystick_active:
             self._select_joystick(self.joystick_selector.currentIndex())
 
-    def _set_real_mode_enabled(self, enabled: bool) -> None:
-        real_item = self.mode_combo.model().item(1)
-        real_item.setEnabled(enabled)
-        if not enabled and self.mode_combo.currentIndex() == 1:
-            self.mode_combo.setCurrentIndex(0)
+    def _update_run_availability(self, joystick_present: bool | None = None) -> None:
+        connected = self.common_page.joystick_active if joystick_present is None else joystick_present
+        self.run_button.setEnabled(bool(connected))
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
@@ -310,6 +307,8 @@ class MainWindow(QMainWindow):
             "font-weight: 700; color: #52d18a;" if connected else "font-weight: 700; color: #ed6262;"
         )
         self.joystick_status_text.setText(status)
+        if hasattr(self, "run_button"):
+            self._update_run_availability(connected)
 
     def _update_joystick_feedback(self, values: object) -> None:
         if not isinstance(values, list):
@@ -405,7 +404,7 @@ class MainWindow(QMainWindow):
         self.advanced_button.setVisible(True)
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(True)
-        self.run_button.setEnabled(True)
+        self._update_run_availability()
         if show_dialog:
             QMessageBox.warning(
                 self,
@@ -498,8 +497,8 @@ class MainWindow(QMainWindow):
         try:
             from thrust.runners.scope_runner import run_scope
 
-            if self.mode_combo.currentIndex() == 1 and not self.common_page.joystick_active:
-                message = "Cannot start a real joystick measurement: no joystick is connected."
+            if not self.common_page.joystick_active:
+                message = "Cannot start measurement: no joystick is connected."
                 self.append_log(message)
                 QMessageBox.warning(self, "Joystick unavailable", message)
                 return
