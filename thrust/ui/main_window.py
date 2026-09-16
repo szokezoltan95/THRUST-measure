@@ -144,7 +144,7 @@ class MainWindow(QMainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
 
-        selection_group = QGroupBox("Measurement session")
+        selection_group = QGroupBox("Test selection")
         selection_form = QFormLayout(selection_group)
         selection_form.addRow("Execution mode:", self.mode_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
