@@ -197,6 +197,7 @@ class ScopeSettingsPage(QWidget):
             debug_output=common_data["debug_output"],
             joystick_index=common_data["joystick_index"],
             break_axis=common_data["break_axis"],
+            reset_axis=common_data["reset_axis"],
             axis_map=common_data["axis_map"],
             output_root=common_data["output_root"],
             profile_name=common_data.get("profile_name", "local"),
