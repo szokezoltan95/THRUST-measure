@@ -138,12 +138,8 @@ class MainWindow(QMainWindow):
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
 
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
-
         selection_group = QGroupBox("Test selection")
         selection_form = QFormLayout(selection_group)
-        selection_form.addRow("Execution mode:", self.mode_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
@@ -514,20 +510,9 @@ class MainWindow(QMainWindow):
             self.append_log(
                 f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
             )
-            step_path = ""
-            if self.mode_combo.currentIndex() == 0:
-                from thrust.dummy_runner import run_dummy
-                raw_path = run_dummy(
-                    participant_code=participant_code,
-                    test_code=test["test_code"],
-                    test_version=test["version"],
-                    output_root=config.output_root,
-                    log_callback=self.append_log,
-                )
-            else:
-                session = run_scope(config, log_callback=self.append_log)
-                raw_path = session.logfile_path
-                step_path = session.step_path
+            session = run_scope(config, log_callback=self.append_log)
+            raw_path = session.logfile_path
+            step_path = session.step_path
 
             if not raw_path:
                 raise RuntimeError("Measurement did not create a raw log.")
