@@ -94,6 +94,8 @@ class CommonSettingsPage(QWidget):
         self.elev_axis_spin = QSpinBox()
         self.thro_axis_spin = QSpinBox()
         self.rudd_axis_spin = QSpinBox()
+        self.deadzone_edit = QLineEdit("100,100,100,100")
+        self.deadzone_edit.setMaximumWidth(180)
         for spin, value in (
             (self.aile_axis_spin, 0),
             (self.elev_axis_spin, 1),
@@ -132,6 +134,7 @@ class CommonSettingsPage(QWidget):
         mapping_form.addRow("ELEV:", self.elev_axis_spin)
         mapping_form.addRow("THRO:", self.thro_axis_spin)
         mapping_form.addRow("RUDD:", self.rudd_axis_spin)
+        mapping_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
 
         diagnostic_group = QGroupBox("Live joystick diagnostic")
         diagnostic_layout = QVBoxLayout(diagnostic_group)
@@ -197,6 +200,7 @@ class CommonSettingsPage(QWidget):
             "fps": self.fps_spin.value(),
             "joystick_index": self.joystick_index_spin.value(),
             "break_axis": self.break_axis_spin.value(),
+            "deadzone": self._parse_deadzone(),
             "axis_map": {
                 "AILE": self.aile_axis_spin.value(),
                 "ELEV": self.elev_axis_spin.value(),
@@ -215,6 +219,12 @@ class CommonSettingsPage(QWidget):
             "show_graph": self.show_graph_check.isChecked(),
         }
 
+    def _parse_deadzone(self) -> list[int]:
+        parts = [part.strip() for part in self.deadzone_edit.text().replace(";", ",").split(",") if part.strip()]
+        if len(parts) != 4:
+            raise ValueError("Deadzone must contain 4 comma-separated integers.")
+        return [int(value) for value in parts]
+
     def load_common_dict(self, data: dict) -> None:
         self.user_edit.setText(data.get("user", "Pilot"))
         self.fullscreen_check.setChecked(data.get("fullscreen", True))
@@ -223,6 +233,8 @@ class CommonSettingsPage(QWidget):
         self.fps_spin.setValue(data.get("fps", 100))
         self.joystick_index_spin.setValue(data.get("joystick_index", 0))
         self.break_axis_spin.setValue(data.get("break_axis", 5))
+        deadzone = data.get("deadzone", [100, 100, 100, 100])
+        self.deadzone_edit.setText(",".join(str(value) for value in deadzone))
         axis_map = data.get("axis_map", {})
         self.aile_axis_spin.setValue(axis_map.get("AILE", 0))
         self.elev_axis_spin.setValue(axis_map.get("ELEV", 1))
