@@ -118,9 +118,6 @@ class CommonSettingsPage(QWidget):
         runtime_form.addRow("Fullscreen:", self.fullscreen_check)
         runtime_form.addRow("Topmost:", self.topmost_check)
         runtime_form.addRow("Debug output:", self.debug_output_check)
-        runtime_form.addRow("Joystick device:", self.joystick_index_spin)
-        runtime_form.addRow("Break button/axis:", self.break_axis_spin)
-        runtime_form.addRow("Reset button/axis:", self.reset_axis_spin)
         runtime_layout.addWidget(runtime_group)
         runtime_layout.addStretch()
 
@@ -133,6 +130,8 @@ class CommonSettingsPage(QWidget):
         mapping_form.addRow("THRO:", self.thro_axis_spin)
         mapping_form.addRow("RUDD:", self.rudd_axis_spin)
         mapping_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
+        mapping_form.addRow("Break button/axis:", self.break_axis_spin)
+        mapping_form.addRow("Reset button/axis:", self.reset_axis_spin)
 
         diagnostic_group = QGroupBox("Live joystick diagnostic")
         diagnostic_layout = QVBoxLayout(diagnostic_group)
@@ -202,6 +201,9 @@ class CommonSettingsPage(QWidget):
         if connect:
             return self._start_joystick_test()
         return True
+
+    def stop_joystick(self) -> None:
+        self._stop_joystick_test(clear_text=False)
 
     def _browse_output_root(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select output root", self.output_root_edit.text().strip())
