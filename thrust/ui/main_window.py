@@ -72,13 +72,14 @@ class LoginDialog(QDialog):
 class AdvancedSettingsDialog(QDialog):
     """Offline test settings only; runtime and joystick controls stay in the main window."""
 
-    def __init__(self, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
+    def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("THRUST offline test settings")
         self.resize(760, 680)
 
         tabs = QTabWidget()
-        tabs.addTab(scope_page, "Offline test configuration")
+        tabs.addTab(common_page, "Runtime and output")
+        self.scope_tab_index = tabs.addTab(scope_page, "Offline test configuration")
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -86,6 +87,9 @@ class AdvancedSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(tabs)
         layout.addWidget(buttons)
+
+    def set_offline_visible(self, visible: bool) -> None:
+        self.tabs.setTabVisible(self.scope_tab_index, visible)
 
 
 class MainWindow(QMainWindow):
@@ -105,12 +109,10 @@ class MainWindow(QMainWindow):
         # Keep joystick diagnostics in the main window and system settings below Run.
         self.joystick_panel = self.common_page.tabs.widget(1)
         self.common_page.tabs.removeTab(1)
-        self.system_tabs = self.common_page.tabs
+        self.joystick_panel.setParent(None)
         self.joystick_panel.setMinimumWidth(450)
         self.joystick_panel.setMinimumHeight(470)
         self.joystick_panel.setMaximumHeight(520)
-        self.system_tabs.setMinimumHeight(250)
-        self.system_tabs.setMaximumHeight(330)
 
         self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
@@ -156,8 +158,10 @@ class MainWindow(QMainWindow):
         self.run_button.setMinimumHeight(44)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
-        self.advanced_button = QPushButton("Offline test settings")
+        self.advanced_button = QPushButton("Advanced settings")
         self.advanced_button.clicked.connect(self._open_advanced)
+        self.offline_button = QPushButton("Offline test settings")
+        self.offline_button.clicked.connect(self._open_offline_settings)
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
@@ -174,20 +178,22 @@ class MainWindow(QMainWindow):
         subtitle = QLabel("Local measurement client · WebDB test versions with local runtime diagnostics")
         subtitle.setStyleSheet("color: #71808d;")
 
-        status_row = QHBoxLayout()
-        status_row.addWidget(self.connection_status)
-        status_row.addStretch()
-        status_row.addWidget(self.connect_button)
-        status_row.addWidget(self.disconnect_button)
+        session_actions = QWidget()
+        session_actions_layout = QHBoxLayout(session_actions)
+        session_actions_layout.setContentsMargins(0, 0, 0, 0)
+        session_actions_layout.addWidget(self.connection_status)
+        session_actions_layout.addStretch()
+        session_actions_layout.addWidget(self.connect_button)
+        session_actions_layout.addWidget(self.disconnect_button)
+        session_actions_layout.addWidget(self.offline_button)
+        session_actions_layout.addWidget(self.advanced_button)
+        selection_form.addRow("WebDB:", session_actions)
 
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addWidget(selection_group)
         left.addWidget(self.test_summary)
         left.addWidget(self.run_button)
-        left.addWidget(self.advanced_button)
-        left.addWidget(self.system_tabs)
-
         right = QVBoxLayout()
         right.setSpacing(10)
         right.addWidget(self.joystick_panel)
@@ -203,7 +209,6 @@ class MainWindow(QMainWindow):
 
         root.addWidget(title)
         root.addWidget(subtitle)
-        root.addLayout(status_row)
         root.addLayout(columns, 1)
         root.addWidget(QLabel("Session log"))
         root.addWidget(self.log_output)
@@ -249,7 +254,10 @@ class MainWindow(QMainWindow):
             self.connection_status.setStyleSheet("color: #4ba878;")
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
-            self.advanced_button.setVisible(False)
+            self.advanced_button.setVisible(True)
+            self.offline_button.setVisible(False)
+            if self.advanced_dialog is not None:
+                self.advanced_dialog.set_offline_visible(False)
             self.append_log(f"Loaded {len(participants)} participants and {len(tests)} active tests.")
             self._load_selected_test()
 
@@ -294,6 +302,9 @@ class MainWindow(QMainWindow):
         self.connect_button.setVisible(True)
         self.disconnect_button.setVisible(False)
         self.advanced_button.setVisible(True)
+        self.offline_button.setVisible(True)
+        if self.advanced_dialog is not None:
+            self.advanced_dialog.set_offline_visible(True)
         self.run_button.setEnabled(True)
         self.test_summary.setText(
             "Offline mode is active. Test settings are local-only and are not synchronized to WebDB."
@@ -380,10 +391,16 @@ class MainWindow(QMainWindow):
 
     def _open_advanced(self) -> None:
         if self.advanced_dialog is None:
-            self.advanced_dialog = AdvancedSettingsDialog(self.scope_page, self)
+            self.advanced_dialog = AdvancedSettingsDialog(self.common_page, self.scope_page, self)
+        self.advanced_dialog.set_offline_visible(self.offline_mode)
         self.advanced_dialog.show()
         self.advanced_dialog.raise_()
         self.advanced_dialog.activateWindow()
+
+    def _open_offline_settings(self) -> None:
+        self._open_advanced()
+        if self.advanced_dialog is not None:
+            self.advanced_dialog.set_offline_visible(True)
 
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
