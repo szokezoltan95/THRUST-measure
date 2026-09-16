@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
         self.common_page.joystick_status_changed.connect(self._set_joystick_status)
         self.common_page.joystick_values_changed.connect(self._update_joystick_feedback)
         self.joystick_bars: dict[str, QProgressBar] = {}
+        self.joystick_device_names: list[str] = []
 
         self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
@@ -160,12 +161,8 @@ class MainWindow(QMainWindow):
         self.joystick_led = QLabel("● DISCONNECTED")
         self.joystick_led.setObjectName("joystickLed")
         self.joystick_status_text = QLabel("Searching for joystick…")
-        self.joystick_retest_button = QPushButton("Quick test")
-        self.joystick_retest_button.setMaximumWidth(110)
-        self.joystick_retest_button.clicked.connect(self._quick_joystick_test)
         joystick_status_row.addWidget(self.joystick_led)
         joystick_status_row.addWidget(self.joystick_status_text, 1)
-        joystick_status_row.addWidget(self.joystick_retest_button)
         joystick_layout.addLayout(joystick_status_row)
 
         feedback_grid = QGridLayout()
@@ -181,11 +178,6 @@ class MainWindow(QMainWindow):
             feedback_grid.addWidget(label, row, 0)
             feedback_grid.addWidget(bar, row, 1)
         joystick_layout.addLayout(feedback_grid)
-
-        self.test_summary = QLabel("Offline mode is active. Configure the test in Settings.")
-        self.test_summary.setWordWrap(True)
-        self.test_summary.setMinimumHeight(56)
-        self.test_summary.setStyleSheet("padding: 10px; border: 1px solid #59636e;")
 
         self.run_button = QPushButton("Start measurement")
         self.run_button.setMinimumHeight(44)
@@ -226,7 +218,6 @@ class MainWindow(QMainWindow):
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addWidget(selection_group)
-        left.addWidget(self.test_summary)
         left.addWidget(self.run_button)
         right = QVBoxLayout()
         right.setSpacing(10)
@@ -262,28 +253,41 @@ class MainWindow(QMainWindow):
         """)
         self._activate_offline_mode(show_dialog=False)
         self._refresh_joystick_selector()
+        self.joystick_scan_timer = QTimer(self)
+        self.joystick_scan_timer.timeout.connect(self._poll_joystick_devices)
+        self.joystick_scan_timer.start(1000)
         QTimer.singleShot(0, self._auto_connect_joystick)
 
     def _refresh_joystick_selector(self) -> None:
         devices = self.common_page.available_joysticks()
-        self.joystick_selector.blockSignals(True)
-        self.joystick_selector.clear()
-        for index, name in enumerate(devices):
-            self.joystick_selector.addItem(f"{index}: {name}", index)
+        previous = self.joystick_selector.currentData()
+        changed = devices != self.joystick_device_names
+        if changed:
+            self.joystick_selector.blockSignals(True)
+            self.joystick_selector.clear()
+            for index, name in enumerate(devices):
+                self.joystick_selector.addItem(f"{index}: {name}", index)
+            if not devices:
+                self.joystick_selector.addItem("No joystick detected", -1)
+            elif previous in range(len(devices)):
+                self.joystick_selector.setCurrentIndex(int(previous))
+            else:
+                self.joystick_selector.setCurrentIndex(0)
+            self.joystick_selector.blockSignals(False)
+            self.joystick_device_names = devices
+
         if not devices:
-            self.joystick_selector.addItem("No joystick detected", -1)
-        elif len(devices) == 1:
-            self.joystick_selector.setCurrentIndex(0)
-        self.joystick_selector.blockSignals(False)
-        if not devices:
+            if self.common_page.joystick_active:
+                self.common_page.stop_joystick()
             self._set_joystick_status(False, "No joystick detected")
+        elif not self.common_page.joystick_active:
+            self._select_joystick(self.joystick_selector.currentIndex())
+
+    def _poll_joystick_devices(self) -> None:
+        self._refresh_joystick_selector()
 
     def _auto_connect_joystick(self) -> None:
         self._refresh_joystick_selector()
-        if self.joystick_selector.currentData() is not None and self.joystick_selector.currentData() >= 0:
-            self._select_joystick(self.joystick_selector.currentIndex())
-        else:
-            self._set_joystick_status(False, "No joystick detected")
 
     def _select_joystick(self, index: int) -> None:
         device_index = self.joystick_selector.itemData(index)
@@ -291,24 +295,6 @@ class MainWindow(QMainWindow):
             self._set_joystick_status(False, "No joystick detected")
             return
         self.common_page.select_joystick(int(device_index), connect=True)
-
-    def _quick_joystick_test(self) -> None:
-        self._refresh_joystick_selector()
-        self._select_joystick(self.joystick_selector.currentIndex())
-
-    def _set_joystick_status(self, connected: bool, status: str) -> None:
-        self.joystick_led.setText("● CONNECTED" if connected else "● DISCONNECTED")
-        self.joystick_led.setStyleSheet(
-            "font-weight: 700; color: #52d18a;" if connected else "font-weight: 700; color: #ed6262;"
-        )
-        self.joystick_status_text.setText(status)
-
-    def _update_joystick_feedback(self, values: object) -> None:
-        if not isinstance(values, list):
-            return
-        for index, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
-            value = float(values[index]) if index < len(values) else 0.0
-            self.joystick_bars[name].setValue(int(max(-1.0, min(1.0, value)) * 100))
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
@@ -398,9 +384,6 @@ class MainWindow(QMainWindow):
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(True)
         self.run_button.setEnabled(True)
-        self.test_summary.setText(
-            "Offline mode is active. Test settings are local-only and are not synchronized to WebDB."
-        )
         if show_dialog:
             QMessageBox.warning(
                 self,
@@ -422,17 +405,11 @@ class MainWindow(QMainWindow):
             self.current_manifest = self.client.get_test_configuration(selected["id"])
             test = self.current_manifest["test"]
             self._apply_web_configuration(test)
-            self.test_summary.setText(
-                f'Loaded {test["name"]} · version {test["version"]}\n'
-                f'Analysis profile: {test["analysis_profile"]}\n'
-                "The measurement engine will use this WebDB version-pinned configuration."
-            )
             self.run_button.setEnabled(self.participant_combo.currentIndex() >= 0)
             self.append_log(f'Loaded test manifest: {test["test_code"]} v{test["version"]}')
         except (WebDbError, KeyError, TypeError, ValueError) as exc:
             self.current_manifest = None
             self.run_button.setEnabled(False)
-            self.test_summary.setText(f"Configuration could not be loaded: {exc}")
             self.append_log(f"Test configuration failed: {exc}")
 
     def _configuration_from_web_test(self, test: dict[str, Any]) -> ScopeConfig:
