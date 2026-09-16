@@ -26,6 +26,7 @@ class ScopeConfig:
     topmost: bool = True
     joystick_index: int = 0
     break_axis: int = 5
+    reset_axis: int = 6
     axis_map: dict[str, int] = field(
         default_factory=lambda: {
             "AILE": 0,
