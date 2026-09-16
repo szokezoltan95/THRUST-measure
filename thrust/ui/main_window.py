@@ -179,7 +179,6 @@ class MainWindow(QMainWindow):
         status_row.addStretch()
         status_row.addWidget(self.connect_button)
         status_row.addWidget(self.disconnect_button)
-        status_row.addWidget(self.advanced_button)
 
         left = QVBoxLayout()
         left.setSpacing(10)
