@@ -289,8 +289,11 @@ class CommonSettingsPage(QWidget):
             pygame.joystick.init()
             index = self.joystick_index_spin.value()
             if pygame.joystick.get_count() <= index:
-                self.device_status.setText("No joystick available for the selected device index.")
-                return
+                status = "No joystick available for the selected device index."
+                self.device_status.setText(status)
+                self.joystick_status_changed.emit(False, status)
+                self.joystick_values_changed.emit([])
+                return False
             self.joystick = pygame.joystick.Joystick(index)
             self.joystick.init()
             self.joystick_active = True
