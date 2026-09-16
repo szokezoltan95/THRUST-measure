@@ -70,8 +70,6 @@ class CommonSettingsPage(QWidget):
         self.output_root_edit = QLineEdit(str(Path.home() / "Documents" / "THRUST" / "scope"))
         self.output_browse_button = QPushButton("Browse")
         self.output_browse_button.clicked.connect(self._browse_output_root)
-        self.profile_name_edit = QLineEdit("default")
-        self.profile_name_edit.setMaximumWidth(180)
         self.use_dated_subfolders_check = QCheckBox()
         self.use_dated_subfolders_check.setChecked(True)
 
@@ -170,7 +168,6 @@ class CommonSettingsPage(QWidget):
         output_root_layout.addWidget(self.output_root_edit, 1)
         output_root_layout.addWidget(self.output_browse_button)
         output_form.addRow("Output root:", output_root_widget)
-        output_form.addRow("Internal file label:", self.profile_name_edit)
         output_form.addRow("Dated subfolders:", self.use_dated_subfolders_check)
         output_form.addRow("Save raw log:", self.save_raw_log_check)
         output_form.addRow("Save action log:", self.save_action_log_check)
@@ -208,7 +205,6 @@ class CommonSettingsPage(QWidget):
                 "RUDD": self.rudd_axis_spin.value(),
             },
             "output_root": self.output_root_edit.text().strip(),
-            "profile_name": self.profile_name_edit.text().strip() or "default",
             "use_dated_subfolders": self.use_dated_subfolders_check.isChecked(),
             "save_raw_log": self.save_raw_log_check.isChecked(),
             "save_action_log": self.save_action_log_check.isChecked(),
@@ -241,7 +237,6 @@ class CommonSettingsPage(QWidget):
         self.thro_axis_spin.setValue(axis_map.get("THRO", 2))
         self.rudd_axis_spin.setValue(axis_map.get("RUDD", 3))
         self.output_root_edit.setText(data.get("output_root", self.output_root_edit.text()))
-        self.profile_name_edit.setText(data.get("profile_name", "default"))
         self.use_dated_subfolders_check.setChecked(data.get("use_dated_subfolders", True))
         self.save_raw_log_check.setChecked(data.get("save_raw_log", True))
         self.save_action_log_check.setChecked(data.get("save_action_log", True))
