@@ -74,7 +74,7 @@ class AdvancedSettingsDialog(QDialog):
 
     def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("THRUST offline test settings")
+        self.setWindowTitle("THRUST advanced settings")
         self.resize(760, 680)
 
         self.tabs = QTabWidget()
@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
         self.joystick_panel = self.common_page.tabs.widget(1)
         self.common_page.tabs.removeTab(1)
         self.joystick_panel.setParent(None)
+        self.joystick_panel.show()
         self.joystick_panel.setMinimumWidth(450)
         self.joystick_panel.setMinimumHeight(470)
         self.joystick_panel.setMaximumHeight(520)
@@ -187,7 +188,11 @@ class MainWindow(QMainWindow):
         session_actions_layout.addWidget(self.disconnect_button)
         session_actions_layout.addWidget(self.offline_button)
         session_actions_layout.addWidget(self.advanced_button)
-        selection_form.addRow("WebDB:", session_actions)
+
+        session_ribbon = QGroupBox("Measurement session")
+        session_ribbon_layout = QHBoxLayout(session_ribbon)
+        session_ribbon_layout.setContentsMargins(10, 4, 10, 4)
+        session_ribbon_layout.addWidget(session_actions)
 
         left = QVBoxLayout()
         left.setSpacing(10)
@@ -209,6 +214,7 @@ class MainWindow(QMainWindow):
 
         root.addWidget(title)
         root.addWidget(subtitle)
+        root.addWidget(session_ribbon)
         root.addLayout(columns, 1)
         root.addWidget(QLabel("Session log"))
         root.addWidget(self.log_output)
