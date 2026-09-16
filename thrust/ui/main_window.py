@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
-        self.test_summary = QLabel("Offline mode is active. Configure the test in Offline test settings.")
+        self.test_summary = QLabel("Offline mode is active. Configure the test in Settings.")
         self.test_summary.setWordWrap(True)
         self.test_summary.setMinimumHeight(56)
         self.test_summary.setStyleSheet("padding: 10px; border: 1px solid #59636e;")
@@ -159,10 +159,8 @@ class MainWindow(QMainWindow):
         self.run_button.setMinimumHeight(44)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
-        self.advanced_button = QPushButton("Advanced settings")
+        self.advanced_button = QPushButton("Settings")
         self.advanced_button.clicked.connect(self._open_advanced)
-        self.offline_button = QPushButton("Offline test settings")
-        self.offline_button.clicked.connect(self._open_offline_settings)
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
@@ -186,7 +184,6 @@ class MainWindow(QMainWindow):
         session_actions_layout.addStretch()
         session_actions_layout.addWidget(self.connect_button)
         session_actions_layout.addWidget(self.disconnect_button)
-        session_actions_layout.addWidget(self.offline_button)
         session_actions_layout.addWidget(self.advanced_button)
 
         session_ribbon = QGroupBox("Measurement session")
@@ -261,7 +258,6 @@ class MainWindow(QMainWindow):
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
             self.advanced_button.setVisible(True)
-            self.offline_button.setVisible(False)
             if self.advanced_dialog is not None:
                 self.advanced_dialog.set_offline_visible(False)
             self.append_log(f"Loaded {len(participants)} participants and {len(tests)} active tests.")
@@ -308,7 +304,6 @@ class MainWindow(QMainWindow):
         self.connect_button.setVisible(True)
         self.disconnect_button.setVisible(False)
         self.advanced_button.setVisible(True)
-        self.offline_button.setVisible(True)
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(True)
         self.run_button.setEnabled(True)
@@ -402,11 +397,6 @@ class MainWindow(QMainWindow):
         self.advanced_dialog.show()
         self.advanced_dialog.raise_()
         self.advanced_dialog.activateWindow()
-
-    def _open_offline_settings(self) -> None:
-        self._open_advanced()
-        if self.advanced_dialog is not None:
-            self.advanced_dialog.set_offline_visible(True)
 
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
