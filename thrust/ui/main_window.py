@@ -77,15 +77,15 @@ class AdvancedSettingsDialog(QDialog):
         self.setWindowTitle("THRUST offline test settings")
         self.resize(760, 680)
 
-        tabs = QTabWidget()
-        tabs.addTab(common_page, "Runtime and output")
-        self.scope_tab_index = tabs.addTab(scope_page, "Offline test configuration")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(common_page, "Runtime and output")
+        self.scope_tab_index = self.tabs.addTab(scope_page, "Offline test configuration")
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(tabs)
+        layout.addWidget(self.tabs)
         layout.addWidget(buttons)
 
     def set_offline_visible(self, visible: bool) -> None:
