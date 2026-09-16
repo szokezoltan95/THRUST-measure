@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -69,7 +70,7 @@ class LoginDialog(QDialog):
 
 
 class AdvancedSettingsDialog(QDialog):
-    """Offline test settings only; runtime and joystick controls live in MainWindow."""
+    """Offline test settings only; runtime and joystick controls stay in the main window."""
 
     def __init__(self, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
         super().__init__(parent)
@@ -91,7 +92,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
-        self.resize(1100, 900)
+        self.resize(1200, 820)
 
         self.client: WebDbClient | None = None
         self.current_manifest: dict[str, Any] | None = None
@@ -100,6 +101,16 @@ class MainWindow(QMainWindow):
         self.common_page = CommonSettingsPage()
         self.scope_page = ScopeSettingsPage()
         self.advanced_dialog: AdvancedSettingsDialog | None = None
+
+        # Keep joystick diagnostics in the main window and system settings below Run.
+        self.joystick_panel = self.common_page.tabs.widget(1)
+        self.common_page.tabs.removeTab(1)
+        self.system_tabs = self.common_page.tabs
+        self.joystick_panel.setMinimumWidth(450)
+        self.joystick_panel.setMinimumHeight(470)
+        self.joystick_panel.setMaximumHeight(520)
+        self.system_tabs.setMinimumHeight(250)
+        self.system_tabs.setMaximumHeight(330)
 
         self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
@@ -139,10 +150,10 @@ class MainWindow(QMainWindow):
         self.test_summary = QLabel("Offline mode is active. Configure the test in Offline test settings.")
         self.test_summary.setWordWrap(True)
         self.test_summary.setMinimumHeight(56)
-        self.test_summary.setStyleSheet("padding: 12px; border: 1px solid #59636e;")
+        self.test_summary.setStyleSheet("padding: 10px; border: 1px solid #59636e;")
 
         self.run_button = QPushButton("Start measurement")
-        self.run_button.setMinimumHeight(46)
+        self.run_button.setMinimumHeight(44)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
         self.advanced_button = QPushButton("Offline test settings")
@@ -150,15 +161,16 @@ class MainWindow(QMainWindow):
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setMinimumHeight(130)
+        self.log_output.setMinimumHeight(90)
+        self.log_output.setMaximumHeight(150)
 
         central = QWidget()
         root = QVBoxLayout(central)
-        root.setContentsMargins(24, 20, 24, 20)
-        root.setSpacing(12)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(10)
 
         title = QLabel("THRUST")
-        title.setStyleSheet("font-size: 30px; font-weight: bold;")
+        title.setStyleSheet("font-size: 28px; font-weight: bold;")
         subtitle = QLabel("Local measurement client · WebDB test versions with local runtime diagnostics")
         subtitle.setStyleSheet("color: #71808d;")
 
@@ -169,15 +181,33 @@ class MainWindow(QMainWindow):
         status_row.addWidget(self.disconnect_button)
         status_row.addWidget(self.advanced_button)
 
+        left = QVBoxLayout()
+        left.setSpacing(10)
+        left.addWidget(selection_group)
+        left.addWidget(self.test_summary)
+        left.addWidget(self.run_button)
+        left.addWidget(self.advanced_button)
+        left.addWidget(self.system_tabs)
+
+        right = QVBoxLayout()
+        right.setSpacing(10)
+        right.addWidget(self.joystick_panel)
+        right.addStretch()
+
+        columns = QGridLayout()
+        columns.setHorizontalSpacing(12)
+        columns.setVerticalSpacing(8)
+        columns.addLayout(left, 0, 0)
+        columns.addLayout(right, 0, 1)
+        columns.setColumnStretch(0, 1)
+        columns.setColumnStretch(1, 1)
+
         root.addWidget(title)
         root.addWidget(subtitle)
         root.addLayout(status_row)
-        root.addWidget(selection_group)
-        root.addWidget(self.test_summary)
-        root.addWidget(self.common_page)
-        root.addWidget(self.run_button)
+        root.addLayout(columns, 1)
         root.addWidget(QLabel("Session log"))
-        root.addWidget(self.log_output, 1)
+        root.addWidget(self.log_output)
 
         self.setCentralWidget(central)
         self._activate_offline_mode(show_dialog=False)
@@ -190,9 +220,10 @@ class MainWindow(QMainWindow):
             self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.server_edit.setText(dialog.values()[0])
-            self.username_edit.setText(dialog.values()[1])
-            self.password_edit.setText(dialog.values()[2])
+            server, username, password = dialog.values()
+            self.server_edit.setText(server)
+            self.username_edit.setText(username)
+            self.password_edit.setText(password)
             self._connect_webdb()
 
     def _connect_webdb(self) -> None:
