@@ -124,8 +124,8 @@ class MainWindow(QMainWindow):
         self.disconnect_button.clicked.connect(self._disconnect_webdb)
         self.disconnect_button.setVisible(False)
 
-        self.connection_status = QLabel("WebDB disconnected · Offline mode")
-        self.connection_status.setStyleSheet("color: #d6a35b;")
+        self.connection_status = QLabel("● WebDB DISCONNECTED · Offline mode")
+        self.connection_status.setStyleSheet("font-weight: 700; color: #ed6262;")
 
         self.participant_combo = QComboBox()
         self.participant_combo.setEditable(True)
@@ -344,8 +344,8 @@ class MainWindow(QMainWindow):
             self.config_source_combo.setCurrentIndex(0)
             self.participant_combo.setEnabled(bool(participants))
             self.test_combo.setEnabled(bool(tests))
-            self.connection_status.setText(f'Connected as {account["username"]}')
-            self.connection_status.setStyleSheet("color: #4ba878;")
+            self.connection_status.setText(f'● WebDB CONNECTED · {account["username"]}')
+            self.connection_status.setStyleSheet("font-weight: 700; color: #52d18a;")
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
             self.advanced_button.setVisible(True)
@@ -390,7 +390,7 @@ class MainWindow(QMainWindow):
         self.test_combo.setCurrentIndex(0)
         self.test_combo.setEnabled(True)
 
-        self.connection_status.setText("WebDB disconnected · Offline mode")
+        self.connection_status.setText("● WebDB DISCONNECTED · Offline mode")
         self.connection_status.setStyleSheet("color: #d6a35b;")
         self.connect_button.setVisible(True)
         self.disconnect_button.setVisible(False)
