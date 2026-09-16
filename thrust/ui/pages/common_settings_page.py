@@ -42,9 +42,6 @@ class CommonSettingsPage(QWidget):
         self._build_ui()
 
     def _build_variables(self) -> None:
-        self.user_edit = QLineEdit("Pilot")
-        self.user_edit.setMaximumWidth(180)
-
         self.fullscreen_check = QCheckBox()
         self.fullscreen_check.setChecked(True)
         self.topmost_check = QCheckBox()
@@ -114,7 +111,6 @@ class CommonSettingsPage(QWidget):
         runtime_layout = QVBoxLayout(runtime_tab)
         runtime_group = QGroupBox("Local runtime")
         runtime_form = QFormLayout(runtime_group)
-        runtime_form.addRow("User:", self.user_edit)
         runtime_form.addRow("Fullscreen:", self.fullscreen_check)
         runtime_form.addRow("Topmost:", self.topmost_check)
         runtime_form.addRow("Debug output:", self.debug_output_check)
@@ -190,7 +186,7 @@ class CommonSettingsPage(QWidget):
 
     def export_common_dict(self) -> dict:
         return {
-            "user": self.user_edit.text().strip() or "Pilot",
+            "user": "LOCAL",
             "fullscreen": self.fullscreen_check.isChecked(),
             "topmost": self.topmost_check.isChecked(),
             "debug_output": self.debug_output_check.isChecked(),
@@ -222,7 +218,6 @@ class CommonSettingsPage(QWidget):
         return [int(value) for value in parts]
 
     def load_common_dict(self, data: dict) -> None:
-        self.user_edit.setText(data.get("user", "Pilot"))
         self.fullscreen_check.setChecked(data.get("fullscreen", True))
         self.topmost_check.setChecked(data.get("topmost", True))
         self.debug_output_check.setChecked(data.get("debug_output", False))
