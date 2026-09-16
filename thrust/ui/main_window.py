@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -105,15 +107,9 @@ class MainWindow(QMainWindow):
         self.common_page = CommonSettingsPage()
         self.scope_page = ScopeSettingsPage()
         self.advanced_dialog: AdvancedSettingsDialog | None = None
-
-        # Keep joystick diagnostics in the main window and system settings below Run.
-        self.joystick_panel = self.common_page.tabs.widget(1)
-        self.common_page.tabs.removeTab(1)
-        self.joystick_panel.setParent(None)
-        self.joystick_panel.show()
-        self.joystick_panel.setMinimumWidth(450)
-        self.joystick_panel.setMinimumHeight(470)
-        self.joystick_panel.setMaximumHeight(520)
+        self.common_page.joystick_status_changed.connect(self._set_joystick_status)
+        self.common_page.joystick_values_changed.connect(self._update_joystick_feedback)
+        self.joystick_bars: dict[str, QProgressBar] = {}
 
         self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
@@ -149,6 +145,42 @@ class MainWindow(QMainWindow):
         selection_form.addRow("Execution mode:", self.mode_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
+
+        joystick_group = QGroupBox("Joystick link")
+        joystick_layout = QVBoxLayout(joystick_group)
+        joystick_row = QHBoxLayout()
+        self.joystick_selector = QComboBox()
+        self.joystick_selector.setPlaceholderText("Select joystick")
+        self.joystick_selector.currentIndexChanged.connect(self._select_joystick)
+        joystick_row.addWidget(QLabel("Device:"))
+        joystick_row.addWidget(self.joystick_selector, 1)
+        joystick_layout.addLayout(joystick_row)
+
+        joystick_status_row = QHBoxLayout()
+        self.joystick_led = QLabel("● DISCONNECTED")
+        self.joystick_led.setObjectName("joystickLed")
+        self.joystick_status_text = QLabel("Searching for joystick…")
+        self.joystick_retest_button = QPushButton("Quick test")
+        self.joystick_retest_button.setMaximumWidth(110)
+        self.joystick_retest_button.clicked.connect(self._quick_joystick_test)
+        joystick_status_row.addWidget(self.joystick_led)
+        joystick_status_row.addWidget(self.joystick_status_text, 1)
+        joystick_status_row.addWidget(self.joystick_retest_button)
+        joystick_layout.addLayout(joystick_status_row)
+
+        feedback_grid = QGridLayout()
+        for row, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+            label = QLabel(name)
+            bar = QProgressBar()
+            bar.setRange(-100, 100)
+            bar.setValue(0)
+            bar.setTextVisible(False)
+            bar.setFixedHeight(8)
+            bar.setObjectName("miniAxis")
+            self.joystick_bars[name] = bar
+            feedback_grid.addWidget(label, row, 0)
+            feedback_grid.addWidget(bar, row, 1)
+        joystick_layout.addLayout(feedback_grid)
 
         self.test_summary = QLabel("Offline mode is active. Configure the test in Settings.")
         self.test_summary.setWordWrap(True)
@@ -198,8 +230,7 @@ class MainWindow(QMainWindow):
         left.addWidget(self.run_button)
         right = QVBoxLayout()
         right.setSpacing(10)
-        right.addWidget(self.joystick_panel)
-        self.joystick_panel.setVisible(True)
+        right.addWidget(joystick_group)
         right.addStretch()
 
         columns = QGridLayout()
@@ -218,7 +249,66 @@ class MainWindow(QMainWindow):
         root.addWidget(self.log_output)
 
         self.setCentralWidget(central)
+        self.setStyleSheet("""
+            QMainWindow { background: #111820; color: #e7edf2; }
+            QGroupBox { border: 1px solid #344553; border-radius: 8px; margin-top: 10px; padding: 12px 10px 10px; font-weight: 600; }
+            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #8fc7d8; }
+            QPushButton { background: #203542; border: 1px solid #4c7180; border-radius: 5px; padding: 7px 12px; }
+            QPushButton:hover { background: #2a4d5d; }
+            QComboBox, QLineEdit { background: #19242d; border: 1px solid #405563; border-radius: 4px; padding: 5px; }
+            QProgressBar#miniAxis { background: #1a2730; border: 1px solid #3b5661; border-radius: 3px; }
+            QProgressBar#miniAxis::chunk { background: #4da6bd; border-radius: 2px; }
+            QLabel#joystickLed { font-weight: 700; color: #e05252; }
+        """)
         self._activate_offline_mode(show_dialog=False)
+        self._refresh_joystick_selector()
+        QTimer.singleShot(0, self._auto_connect_joystick)
+
+    def _refresh_joystick_selector(self) -> None:
+        devices = self.common_page.available_joysticks()
+        self.joystick_selector.blockSignals(True)
+        self.joystick_selector.clear()
+        for index, name in enumerate(devices):
+            self.joystick_selector.addItem(f"{index}: {name}", index)
+        if not devices:
+            self.joystick_selector.addItem("No joystick detected", -1)
+        elif len(devices) == 1:
+            self.joystick_selector.setCurrentIndex(0)
+        self.joystick_selector.blockSignals(False)
+        if not devices:
+            self._set_joystick_status(False, "No joystick detected")
+
+    def _auto_connect_joystick(self) -> None:
+        self._refresh_joystick_selector()
+        if self.joystick_selector.currentData() is not None and self.joystick_selector.currentData() >= 0:
+            self._select_joystick(self.joystick_selector.currentIndex())
+        else:
+            self._set_joystick_status(False, "No joystick detected")
+
+    def _select_joystick(self, index: int) -> None:
+        device_index = self.joystick_selector.itemData(index)
+        if device_index is None or int(device_index) < 0:
+            self._set_joystick_status(False, "No joystick detected")
+            return
+        self.common_page.select_joystick(int(device_index), connect=True)
+
+    def _quick_joystick_test(self) -> None:
+        self._refresh_joystick_selector()
+        self._select_joystick(self.joystick_selector.currentIndex())
+
+    def _set_joystick_status(self, connected: bool, status: str) -> None:
+        self.joystick_led.setText("● CONNECTED" if connected else "● DISCONNECTED")
+        self.joystick_led.setStyleSheet(
+            "font-weight: 700; color: #52d18a;" if connected else "font-weight: 700; color: #ed6262;"
+        )
+        self.joystick_status_text.setText(status)
+
+    def _update_joystick_feedback(self, values: object) -> None:
+        if not isinstance(values, list):
+            return
+        for index, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+            value = float(values[index]) if index < len(values) else 0.0
+            self.joystick_bars[name].setValue(int(max(-1.0, min(1.0, value)) * 100))
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
