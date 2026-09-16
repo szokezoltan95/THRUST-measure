@@ -37,6 +37,11 @@ class ScopeSettingsPage(QWidget):
         self.timeout_spin.setValue(3.0)
         self.timeout_spin.setMaximumWidth(110)
 
+        self.fps_spin = QSpinBox()
+        self.fps_spin.setRange(10, 1000)
+        self.fps_spin.setValue(100)
+        self.fps_spin.setMaximumWidth(110)
+
         self.hold_time_spin = QDoubleSpinBox()
         self.hold_time_spin.setRange(0.1, 60.0)
         self.hold_time_spin.setDecimals(2)
@@ -102,6 +107,7 @@ class ScopeSettingsPage(QWidget):
         task_group = QGroupBox("Test parameters")
         task_form = QFormLayout(task_group)
         task_form.addRow("Difficulty:", self.difficulty_edit)
+        task_form.addRow("Sampling frequency [Hz]:", self.fps_spin)
         task_form.addRow("Action timeout [s]:", self.timeout_spin)
         task_form.addRow("Hold time [s]:", self.hold_time_spin)
         task_form.addRow("Stick max:", self.stick_max_spin)
@@ -180,7 +186,7 @@ class ScopeSettingsPage(QWidget):
             difficulty=self.difficulty_edit.text().strip().lower() or "hard",
             action_timeout_s=self.timeout_spin.value(),
             hold_time_s=self.hold_time_spin.value(),
-            fps=common_data["fps"],
+            fps=self.fps_spin.value(),
             stick_max=self.stick_max_spin.value(),
             deadzone=common_data.get("deadzone", [100, 100, 100, 100]),
             max_completed_actions=self.max_actions_spin.value(),
@@ -225,6 +231,7 @@ class ScopeSettingsPage(QWidget):
     def load_scope_config(self, cfg: ScopeConfig) -> None:
         self.difficulty_edit.setText(cfg.difficulty)
         self.timeout_spin.setValue(cfg.action_timeout_s)
+        self.fps_spin.setValue(cfg.fps)
         self.hold_time_spin.setValue(cfg.hold_time_s)
         self.stick_max_spin.setValue(cfg.stick_max)
         self.max_actions_spin.setValue(cfg.max_completed_actions)
@@ -247,7 +254,6 @@ class ScopeSettingsPage(QWidget):
                 "fullscreen": cfg.fullscreen,
                 "topmost": cfg.topmost,
                 "debug_output": cfg.debug_output,
-                "fps": cfg.fps,
                 "joystick_index": cfg.joystick_index,
                 "break_axis": cfg.break_axis,
                 "axis_map": cfg.axis_map,
