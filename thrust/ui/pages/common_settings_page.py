@@ -49,11 +49,6 @@ class CommonSettingsPage(QWidget):
         self.debug_output_check = QCheckBox()
         self.debug_output_check.setChecked(False)
 
-        self.fps_spin = QSpinBox()
-        self.fps_spin.setRange(10, 1000)
-        self.fps_spin.setValue(100)
-        self.fps_spin.setMaximumWidth(100)
-
         self.joystick_index_spin = QSpinBox()
         self.joystick_index_spin.setRange(0, 16)
         self.joystick_index_spin.setValue(0)
@@ -114,7 +109,6 @@ class CommonSettingsPage(QWidget):
         runtime_form.addRow("Fullscreen:", self.fullscreen_check)
         runtime_form.addRow("Topmost:", self.topmost_check)
         runtime_form.addRow("Debug output:", self.debug_output_check)
-        runtime_form.addRow("FPS:", self.fps_spin)
         runtime_form.addRow("Joystick device:", self.joystick_index_spin)
         runtime_form.addRow("Break button/axis:", self.break_axis_spin)
         runtime_layout.addWidget(runtime_group)
@@ -190,7 +184,6 @@ class CommonSettingsPage(QWidget):
             "fullscreen": self.fullscreen_check.isChecked(),
             "topmost": self.topmost_check.isChecked(),
             "debug_output": self.debug_output_check.isChecked(),
-            "fps": self.fps_spin.value(),
             "joystick_index": self.joystick_index_spin.value(),
             "break_axis": self.break_axis_spin.value(),
             "deadzone": self._parse_deadzone(),
@@ -221,7 +214,6 @@ class CommonSettingsPage(QWidget):
         self.fullscreen_check.setChecked(data.get("fullscreen", True))
         self.topmost_check.setChecked(data.get("topmost", True))
         self.debug_output_check.setChecked(data.get("debug_output", False))
-        self.fps_spin.setValue(data.get("fps", 100))
         self.joystick_index_spin.setValue(data.get("joystick_index", 0))
         self.break_axis_spin.setValue(data.get("break_axis", 5))
         deadzone = data.get("deadzone", [100, 100, 100, 100])
