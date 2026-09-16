@@ -1,27 +1,16 @@
 from __future__ import annotations
 
-import os
-
-os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
-
-import pygame
-
-from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QColorDialog,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QTabWidget,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -30,15 +19,10 @@ from scope.scope_config import ScopeConfig
 
 
 class ScopeSettingsPage(QWidget):
+    """Offline test configuration: the same test-owned settings as WebDB."""
+
     def __init__(self) -> None:
         super().__init__()
-
-        self.joystick = None
-        self.joystick_active = False
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._poll_joystick)
-
         self._build_variables()
         self._build_ui()
         self.load_scope_config(ScopeConfig())
@@ -64,9 +48,6 @@ class ScopeSettingsPage(QWidget):
         self.stick_max_spin.setValue(1000)
         self.stick_max_spin.setMaximumWidth(110)
 
-        self.deadzone_edit = QLineEdit("100,100,100,100")
-        self.deadzone_edit.setMaximumWidth(180)
-
         self.max_actions_spin = QSpinBox()
         self.max_actions_spin.setRange(1, 10000)
         self.max_actions_spin.setValue(50)
@@ -80,57 +61,20 @@ class ScopeSettingsPage(QWidget):
         self.seed_edit = QLineEdit("")
         self.seed_edit.setMaximumWidth(140)
 
-        self.expert_mode_check = QCheckBox()
-        self.expert_mode_check.setChecked(False)
-
-        self.aile_axis_spin = QSpinBox()
-        self.elev_axis_spin = QSpinBox()
-        self.thro_axis_spin = QSpinBox()
-        self.rudd_axis_spin = QSpinBox()
-        for spin, value in (
-            (self.aile_axis_spin, 0),
-            (self.elev_axis_spin, 1),
-            (self.thro_axis_spin, 2),
-            (self.rudd_axis_spin, 3),
-        ):
-            spin.setRange(0, 16)
-            spin.setValue(value)
-            spin.setMaximumWidth(80)
-
-        self.gui_gimbal_size_spin = QSpinBox()
-        self.gui_gimbal_size_spin.setRange(150, 2000)
-        self.gui_gimbal_size_spin.setValue(500)
-        self.gui_gimbal_size_spin.setMaximumWidth(110)
-
-        self.gui_stick_zone_spin = QSpinBox()
-        self.gui_stick_zone_spin.setRange(10, 1000)
-        self.gui_stick_zone_spin.setValue(200)
-        self.gui_stick_zone_spin.setMaximumWidth(110)
-
-        self.gui_stick_radius_spin = QSpinBox()
-        self.gui_stick_radius_spin.setRange(1, 100)
-        self.gui_stick_radius_spin.setValue(20)
-        self.gui_stick_radius_spin.setMaximumWidth(110)
-
-        self.gui_stick_outline_width_spin = QSpinBox()
-        self.gui_stick_outline_width_spin.setRange(1, 30)
-        self.gui_stick_outline_width_spin.setValue(6)
-        self.gui_stick_outline_width_spin.setMaximumWidth(110)
-
-        self.gui_zone_outline_width_spin = QSpinBox()
-        self.gui_zone_outline_width_spin.setRange(1, 30)
-        self.gui_zone_outline_width_spin.setValue(8)
-        self.gui_zone_outline_width_spin.setMaximumWidth(110)
-
-        self.gui_gimbal_border_width_spin = QSpinBox()
-        self.gui_gimbal_border_width_spin.setRange(1, 40)
-        self.gui_gimbal_border_width_spin.setValue(12)
-        self.gui_gimbal_border_width_spin.setMaximumWidth(110)
-
-        self.gui_gimbal_cross_width_spin = QSpinBox()
-        self.gui_gimbal_cross_width_spin.setRange(1, 20)
-        self.gui_gimbal_cross_width_spin.setValue(6)
-        self.gui_gimbal_cross_width_spin.setMaximumWidth(110)
+        for name, value in {
+            "gui_gimbal_size": (150, 2000, 500),
+            "gui_stick_zone": (10, 1000, 200),
+            "gui_stick_radius": (1, 100, 20),
+            "gui_stick_outline_width": (1, 30, 6),
+            "gui_zone_outline_width": (1, 30, 8),
+            "gui_gimbal_border_width": (1, 40, 12),
+            "gui_gimbal_cross_width": (1, 20, 6),
+        }.items():
+            spin = QSpinBox()
+            spin.setRange(value[0], value[1])
+            spin.setValue(value[2])
+            spin.setMaximumWidth(110)
+            setattr(self, f"{name}_spin", spin)
 
         self.color_buttons = {}
         self.colors = {
@@ -148,97 +92,40 @@ class ScopeSettingsPage(QWidget):
         }
 
     def _build_ui(self) -> None:
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
         self.tabs = QTabWidget()
-        outer_layout.addWidget(self.tabs)
+        root.addWidget(self.tabs)
 
-        self.tab_experiment = QWidget()
-        self.tab_runtime = QWidget()
-        self.tab_appearance = QWidget()
+        experiment = QWidget()
+        experiment_layout = QGridLayout(experiment)
+        task_group = QGroupBox("Test parameters")
+        task_form = QFormLayout(task_group)
+        task_form.addRow("Difficulty:", self.difficulty_edit)
+        task_form.addRow("Action timeout [s]:", self.timeout_spin)
+        task_form.addRow("Hold time [s]:", self.hold_time_spin)
+        task_form.addRow("Stick max:", self.stick_max_spin)
+        task_form.addRow("Completed actions:", self.max_actions_spin)
+        task_form.addRow("Countdown [s]:", self.countdown_spin)
+        task_form.addRow("Random seed:", self.seed_edit)
+        experiment_layout.addWidget(task_group, 0, 0)
+        experiment_layout.addWidget(QLabel("Joystick hardware, axis mapping and output paths are local runtime settings."), 1, 0)
+        experiment_layout.setRowStretch(2, 1)
 
-        self.tabs.addTab(self.tab_experiment, "Experiment")
-        self.tabs.addTab(self.tab_runtime, "Runtime / Joystick")
-        self.tabs.addTab(self.tab_appearance, "Appearance")
-
-        self._build_experiment_tab()
-        self._build_runtime_tab()
-        self._build_appearance_tab()
-
-    def _build_experiment_tab(self) -> None:
-        layout = QHBoxLayout(self.tab_experiment)
-
-        left_group = QGroupBox("Task")
-        left_form = QFormLayout(left_group)
-        left_form.addRow("Difficulty:", self.difficulty_edit)
-        left_form.addRow("Action timeout [s]:", self.timeout_spin)
-        left_form.addRow("Hold time [s]:", self.hold_time_spin)
-        left_form.addRow("Stick max:", self.stick_max_spin)
-        left_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
-
-        right_group = QGroupBox("Session")
-        right_form = QFormLayout(right_group)
-        right_form.addRow("Completed actions:", self.max_actions_spin)
-        right_form.addRow("Countdown [s]:", self.countdown_spin)
-        right_form.addRow("Random seed:", self.seed_edit)
-        right_form.addRow("Expert mode:", self.expert_mode_check)
-
-        layout.addWidget(left_group, 1)
-        layout.addWidget(right_group, 1)
-
-    def _build_runtime_tab(self) -> None:
-        layout = QHBoxLayout(self.tab_runtime)
-
-        mapping_group = QGroupBox("Axis mapping")
-        mapping_form = QFormLayout(mapping_group)
-        mapping_form.addRow("AILE axis:", self.aile_axis_spin)
-        mapping_form.addRow("ELEV axis:", self.elev_axis_spin)
-        mapping_form.addRow("THRO axis:", self.thro_axis_spin)
-        mapping_form.addRow("RUDD axis:", self.rudd_axis_spin)
-
-        joystick_group = QGroupBox("Joystick test")
-        joystick_layout = QVBoxLayout(joystick_group)
-
-        btn_row = QHBoxLayout()
-        self.start_test_btn = QPushButton("Start test")
-        self.stop_test_btn = QPushButton("Stop test")
-        self.start_test_btn.clicked.connect(self._start_joystick_test)
-        self.stop_test_btn.clicked.connect(self._stop_joystick_test)
-
-        btn_row.addWidget(self.start_test_btn)
-        btn_row.addWidget(self.stop_test_btn)
-        btn_row.addStretch()
-
-        self.joystick_status = QTextEdit()
-        self.joystick_status.setReadOnly(True)
-        self.joystick_status.setMinimumHeight(260)
-
-        joystick_layout.addLayout(btn_row)
-        joystick_layout.addWidget(self.joystick_status)
-
-        layout.addWidget(mapping_group, 0)
-        layout.addWidget(joystick_group, 1)
-
-    def _build_appearance_tab(self) -> None:
-        layout = QHBoxLayout(self.tab_appearance)
-
-        left_col = QVBoxLayout()
-        right_col = QVBoxLayout()
-
-        size_group = QGroupBox("Geometry")
-        size_form = QFormLayout(size_group)
-        size_form.addRow("Gimbal size [px]:", self.gui_gimbal_size_spin)
-        size_form.addRow("Target zone radius:", self.gui_stick_zone_spin)
-        size_form.addRow("Stick radius:", self.gui_stick_radius_spin)
-        size_form.addRow("Stick outline width:", self.gui_stick_outline_width_spin)
-        size_form.addRow("Zone outline width:", self.gui_zone_outline_width_spin)
-        size_form.addRow("Gimbal border width:", self.gui_gimbal_border_width_spin)
-        size_form.addRow("Cross width:", self.gui_gimbal_cross_width_spin)
+        appearance = QWidget()
+        appearance_layout = QGridLayout(appearance)
+        geometry_group = QGroupBox("Geometry")
+        geometry_form = QFormLayout(geometry_group)
+        geometry_form.addRow("Gimbal size [px]:", self.gui_gimbal_size_spin)
+        geometry_form.addRow("Target zone radius:", self.gui_stick_zone_spin)
+        geometry_form.addRow("Stick radius:", self.gui_stick_radius_spin)
+        geometry_form.addRow("Stick outline width:", self.gui_stick_outline_width_spin)
+        geometry_form.addRow("Zone outline width:", self.gui_zone_outline_width_spin)
+        geometry_form.addRow("Gimbal border width:", self.gui_gimbal_border_width_spin)
+        geometry_form.addRow("Cross width:", self.gui_gimbal_cross_width_spin)
 
         color_group = QGroupBox("Colors")
         color_grid = QGridLayout(color_group)
-
         labels = [
             ("screen_background", "Screen background"),
             ("gimbal_background", "Gimbal background"),
@@ -252,109 +139,69 @@ class ScopeSettingsPage(QWidget):
             ("label_color", "Label color"),
             ("prompt_color", "Prompt color"),
         ]
-
         for row, (key, label) in enumerate(labels):
-            btn = QPushButton()
-            btn.setMinimumWidth(130)
-            btn.clicked.connect(lambda _, k=key: self._pick_color(k))
-            self.color_buttons[key] = btn
+            button = QPushButton()
+            button.clicked.connect(lambda _, selected=key: self._pick_color(selected))
+            self.color_buttons[key] = button
             color_grid.addWidget(QLabel(label), row, 0)
-            color_grid.addWidget(btn, row, 1)
+            color_grid.addWidget(button, row, 1)
 
-        preview_group = QGroupBox("Preview")
-        preview_layout = QVBoxLayout(preview_group)
-        self.preview_status = QLabel("Live embedded preview will be added in the next step.")
-        self.preview_status.setWordWrap(True)
-        self.refresh_preview_btn = QPushButton("Refresh preview")
-        self.refresh_preview_btn.clicked.connect(self._update_preview)
-        preview_layout.addWidget(self.preview_status)
-        preview_layout.addWidget(self.refresh_preview_btn)
-        preview_layout.addStretch()
+        appearance_layout.addWidget(geometry_group, 0, 0)
+        appearance_layout.addWidget(color_group, 0, 1)
+        appearance_layout.setColumnStretch(1, 1)
 
-        left_col.addWidget(size_group)
-        left_col.addStretch()
-
-        right_col.addWidget(color_group)
-        right_col.addWidget(preview_group)
-        right_col.addStretch()
-
-        layout.addLayout(left_col, 0)
-        layout.addLayout(right_col, 1)
+        self.tabs.addTab(experiment, "Test configuration")
+        self.tabs.addTab(appearance, "Appearance")
 
     def _pick_color(self, key: str) -> None:
         color = QColorDialog.getColor()
         if color.isValid():
             self.colors[key] = color.name()
             self._refresh_color_buttons()
-            self._update_preview()
 
     def _refresh_color_buttons(self) -> None:
-        for key, btn in self.color_buttons.items():
-            hex_color = self.colors[key]
-            btn.setText(hex_color)
-            btn.setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: {hex_color};
-                    color: {self._ideal_text_color(hex_color)};
-                    border: 1px solid #666;
-                    border-radius: 6px;
-                    padding: 6px 10px;
-                    font-weight: 600;
-                }}
-                """
+        for key, button in self.color_buttons.items():
+            value = self.colors[key]
+            button.setText(value)
+            button.setStyleSheet(
+                f"QPushButton {{ background-color: {value}; color: {'#000000' if self._brightness(value) > 150 else '#ffffff'}; padding: 6px 10px; }}"
             )
 
-    def _ideal_text_color(self, hex_color: str) -> str:
-        hex_color = hex_color.lstrip("#")
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
-        brightness = (r * 299 + g * 587 + b * 114) / 1000
-        return "#000000" if brightness > 150 else "#ffffff"
-
-    def _parse_deadzone(self) -> list[int]:
-        parts = [p.strip() for p in self.deadzone_edit.text().replace(";", ",").split(",") if p.strip()]
-        if len(parts) != 4:
-            raise ValueError("Deadzone must contain 4 comma-separated integers.")
-        return [int(v) for v in parts]
+    @staticmethod
+    def _brightness(value: str) -> float:
+        value = value.lstrip("#")
+        return (int(value[0:2], 16) * 299 + int(value[2:4], 16) * 587 + int(value[4:6], 16) * 114) / 1000
 
     def build_scope_config(self, common) -> ScopeConfig:
         seed_text = self.seed_edit.text().strip()
-
+        common_data = common.export_common_dict()
         return ScopeConfig(
-            user=common.user_edit.text().strip() or "Pilot",
+            user=common_data["user"],
             difficulty=self.difficulty_edit.text().strip().lower() or "hard",
             action_timeout_s=self.timeout_spin.value(),
             hold_time_s=self.hold_time_spin.value(),
-            fps=common.fps_spin.value(),
+            fps=common_data["fps"],
             stick_max=self.stick_max_spin.value(),
-            deadzone=self._parse_deadzone(),
+            deadzone=common_data.get("deadzone", [100, 100, 100, 100]),
             max_completed_actions=self.max_actions_spin.value(),
             countdown_s=self.countdown_spin.value(),
             seed=int(seed_text) if seed_text else None,
-            fullscreen=common.fullscreen_check.isChecked(),
-            topmost=common.topmost_check.isChecked(),
-            debug_output=common.debug_output_check.isChecked(),
-            joystick_index=common.joystick_index_spin.value(),
-            break_axis=common.break_axis_spin.value(),
-            axis_map={
-                "AILE": self.aile_axis_spin.value(),
-                "ELEV": self.elev_axis_spin.value(),
-                "THRO": self.thro_axis_spin.value(),
-                "RUDD": self.rudd_axis_spin.value(),
-            },
-            output_root=common.output_root_edit.text().strip(),
-            profile_name=common.profile_name_edit.text().strip() or "default",
-            use_dated_subfolders=common.use_dated_subfolders_check.isChecked(),
-            save_raw_log=common.save_raw_log_check.isChecked(),
-            save_action_log=common.save_action_log_check.isChecked(),
-            save_step_file=common.save_step_file_check.isChecked(),
-            save_graph_pdf=common.save_graph_pdf_check.isChecked(),
-            auto_open_graph=common.auto_open_graph_check.isChecked(),
-            run_evaluation=common.run_evaluation_check.isChecked(),
-            show_graph=common.show_graph_check.isChecked(),
-            expert_mode=self.expert_mode_check.isChecked(),
+            fullscreen=common_data["fullscreen"],
+            topmost=common_data["topmost"],
+            debug_output=common_data["debug_output"],
+            joystick_index=common_data["joystick_index"],
+            break_axis=common_data["break_axis"],
+            axis_map=common_data["axis_map"],
+            output_root=common_data["output_root"],
+            profile_name=common_data["profile_name"],
+            use_dated_subfolders=common_data["use_dated_subfolders"],
+            save_raw_log=common_data["save_raw_log"],
+            save_action_log=common_data["save_action_log"],
+            save_step_file=common_data["save_step_file"],
+            save_graph_pdf=common_data["save_graph_pdf"],
+            auto_open_graph=common_data["auto_open_graph"],
+            run_evaluation=common_data["run_evaluation"],
+            show_graph=common_data["show_graph"],
             gui_gimbal_size=self.gui_gimbal_size_spin.value(),
             gui_stick_zone=self.gui_stick_zone_spin.value(),
             gui_stick_radius=self.gui_stick_radius_spin.value(),
@@ -380,17 +227,9 @@ class ScopeSettingsPage(QWidget):
         self.timeout_spin.setValue(cfg.action_timeout_s)
         self.hold_time_spin.setValue(cfg.hold_time_s)
         self.stick_max_spin.setValue(cfg.stick_max)
-        self.deadzone_edit.setText(",".join(str(v) for v in cfg.deadzone))
         self.max_actions_spin.setValue(cfg.max_completed_actions)
         self.countdown_spin.setValue(cfg.countdown_s)
         self.seed_edit.setText("" if cfg.seed is None else str(cfg.seed))
-        self.expert_mode_check.setChecked(cfg.expert_mode)
-
-        self.aile_axis_spin.setValue(cfg.axis_map["AILE"])
-        self.elev_axis_spin.setValue(cfg.axis_map["ELEV"])
-        self.thro_axis_spin.setValue(cfg.axis_map["THRO"])
-        self.rudd_axis_spin.setValue(cfg.axis_map["RUDD"])
-
         self.gui_gimbal_size_spin.setValue(cfg.gui_gimbal_size)
         self.gui_stick_zone_spin.setValue(cfg.gui_stick_zone)
         self.gui_stick_radius_spin.setValue(cfg.gui_stick_radius)
@@ -398,106 +237,20 @@ class ScopeSettingsPage(QWidget):
         self.gui_zone_outline_width_spin.setValue(cfg.gui_zone_outline_width)
         self.gui_gimbal_border_width_spin.setValue(cfg.gui_gimbal_border_width)
         self.gui_gimbal_cross_width_spin.setValue(cfg.gui_gimbal_cross_width)
-
-        self.colors = {
-            "screen_background": cfg.screen_background,
-            "gimbal_background": cfg.gimbal_background,
-            "stick_outline": cfg.stick_outline,
-            "stick_fill": cfg.stick_fill,
-            "zone_idle_outline": cfg.zone_idle_outline,
-            "zone_idle_fill": cfg.zone_idle_fill,
-            "zone_ok_outline": cfg.zone_ok_outline,
-            "zone_ok_fill": cfg.zone_ok_fill,
-            "grid_color": cfg.grid_color,
-            "label_color": cfg.label_color,
-            "prompt_color": cfg.prompt_color,
-        }
+        self.colors = {key: getattr(cfg, key) for key in self.colors}
         self._refresh_color_buttons()
 
-    def _append_joystick_text(self, text: str) -> None:
-        self.joystick_status.setPlainText(text)
-
-    def _start_joystick_test(self) -> None:
-        self._stop_joystick_test(clear_text=False)
-        try:
-            if not pygame.get_init():
-                pygame.init()
-            if not pygame.joystick.get_init():
-                pygame.joystick.init()
-
-            count = pygame.joystick.get_count()
-            if count <= 0:
-                self._append_joystick_text("No joystick detected.")
-                return
-
-            self.joystick = pygame.joystick.Joystick(0)
-            self.joystick.init()
-            self.joystick_active = True
-            self.timer.start(50)
-        except Exception as exc:
-            self._append_joystick_text(f"Joystick start failed: {exc}")
-
-    def _poll_joystick(self) -> None:
-        if not self.joystick_active or self.joystick is None:
-            return
-
-        try:
-            pygame.event.pump()
-
-            lines = [
-                f"Joystick name: {self.joystick.get_name()}",
-                f"Axes: {self.joystick.get_numaxes()}",
-                f"Buttons: {self.joystick.get_numbuttons()}",
-                "",
-            ]
-
-            for i in range(self.joystick.get_numaxes()):
-                value = self.joystick.get_axis(i)
-                lines.append(f"Axis {i}: {value:+.4f}")
-
-            self._append_joystick_text("\n".join(lines))
-        except Exception as exc:
-            self._append_joystick_text(f"Joystick polling failed: {exc}")
-            self._stop_joystick_test(clear_text=False)
-
-    def _stop_joystick_test(self, clear_text: bool = True) -> None:
-        self.timer.stop()
-        self.joystick_active = False
-
-        try:
-            if self.joystick is not None:
-                self.joystick.quit()
-        except Exception:
-            pass
-
-        self.joystick = None
-
-        try:
-            pygame.joystick.quit()
-        except Exception:
-            pass
-
-        try:
-            pygame.quit()
-        except Exception:
-            pass
-
-        if clear_text:
-            self._append_joystick_text("Joystick test stopped.")
-
-    def _update_preview(self) -> None:
-        self.preview_status.setText("Preview refresh requested. Embedded live preview will be added next.")
-        
     def apply_scope_config(self, cfg: ScopeConfig, common_page) -> None:
         common_page.load_common_dict(
             {
                 "user": cfg.user,
                 "fullscreen": cfg.fullscreen,
                 "topmost": cfg.topmost,
-                "debug_output": getattr(cfg, "debug_output", False),
+                "debug_output": cfg.debug_output,
                 "fps": cfg.fps,
                 "joystick_index": cfg.joystick_index,
                 "break_axis": cfg.break_axis,
+                "axis_map": cfg.axis_map,
                 "output_root": cfg.output_root,
                 "profile_name": cfg.profile_name,
                 "use_dated_subfolders": cfg.use_dated_subfolders,
