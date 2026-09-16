@@ -140,6 +140,7 @@ class MainWindow(QMainWindow):
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
+        self.mode_combo.model().item(1).setEnabled(False)
 
         selection_group = QGroupBox("Test selection")
         selection_form = QFormLayout(selection_group)
@@ -276,12 +277,19 @@ class MainWindow(QMainWindow):
             self.joystick_selector.blockSignals(False)
             self.joystick_device_names = devices
 
+        self._set_real_mode_enabled(bool(devices))
         if not devices:
             if self.common_page.joystick_active:
                 self.common_page.stop_joystick()
             self._set_joystick_status(False, "No joystick detected")
         elif not self.common_page.joystick_active:
             self._select_joystick(self.joystick_selector.currentIndex())
+
+    def _set_real_mode_enabled(self, enabled: bool) -> None:
+        real_item = self.mode_combo.model().item(1)
+        real_item.setEnabled(enabled)
+        if not enabled and self.mode_combo.currentIndex() == 1:
+            self.mode_combo.setCurrentIndex(0)
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
@@ -489,6 +497,12 @@ class MainWindow(QMainWindow):
 
         try:
             from thrust.runners.scope_runner import run_scope
+
+            if self.mode_combo.currentIndex() == 1 and not self.common_page.joystick_active:
+                message = "Cannot start a real joystick measurement: no joystick is connected."
+                self.append_log(message)
+                QMessageBox.warning(self, "Joystick unavailable", message)
+                return
 
             if self.offline_mode:
                 config = self.scope_page.build_scope_config(self.common_page)
