@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -32,21 +31,56 @@ from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.webdb_client import WebDbClient, WebDbError
 
 
-class AdvancedSettingsDialog(QDialog):
-    """Keeps technical controls available without cluttering the primary workflow."""
+DEFAULT_WEBDB_URL = "http://thrust.webdb"
 
-    def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
+
+class LoginDialog(QDialog):
+    def __init__(self, server: str, username: str, password: str, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("THRUST advanced settings")
-        self.resize(760, 760)
+        self.setWindowTitle("Connect to THRUST WebDB")
+        self.setMinimumWidth(390)
+
+        self.server_edit = QLineEdit(server)
+        self.username_edit = QLineEdit(username)
+        self.password_edit = QLineEdit(password)
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+
+        form = QFormLayout()
+        form.addRow("WebDB address:", self.server_edit)
+        form.addRow("Username:", self.username_edit)
+        form.addRow("Password:", self.password_edit)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+    def values(self) -> tuple[str, str, str]:
+        return (
+            self.server_edit.text().strip(),
+            self.username_edit.text(),
+            self.password_edit.text(),
+        )
+
+
+class AdvancedSettingsDialog(QDialog):
+    """Offline test settings only; runtime and joystick controls live in MainWindow."""
+
+    def __init__(self, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("THRUST offline test settings")
+        self.resize(760, 680)
 
         tabs = QTabWidget()
-        tabs.addTab(common_page, "Runtime and output")
-        tabs.addTab(scope_page, "SCoPE")
+        tabs.addTab(scope_page, "Offline test configuration")
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
 
         layout = QVBoxLayout(self)
         layout.addWidget(tabs)
@@ -56,140 +90,194 @@ class AdvancedSettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("THRUST · WebDB measurement client")
-        self.resize(960, 720)
+        self.setWindowTitle("THRUST · measurement client")
+        self.resize(1100, 900)
 
         self.client: WebDbClient | None = None
         self.current_manifest: dict[str, Any] | None = None
+        self.offline_mode = True
+
         self.common_page = CommonSettingsPage()
         self.scope_page = ScopeSettingsPage()
         self.advanced_dialog: AdvancedSettingsDialog | None = None
 
-        self.server_edit = QLineEdit("http://localhost:8080")
+        self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
         self.password_edit = QLineEdit()
-        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.connect_button = QPushButton("Connect to WebDB")
-        self.connect_button.clicked.connect(self._connect_webdb)
+        self.config_source_combo = QComboBox()
+        self.config_source_combo.addItems(["WebDB", "Local offline"])
+        self.config_source_combo.setVisible(False)
 
-        connection_group = QGroupBox("Web database")
-        connection_form = QFormLayout(connection_group)
-        connection_form.addRow("Server URL:", self.server_edit)
-        connection_form.addRow("Username:", self.username_edit)
-        connection_form.addRow("Password:", self.password_edit)
-        connection_form.addRow("", self.connect_button)
+        self.connect_button = QPushButton("Connect")
+        self.connect_button.clicked.connect(self._open_login)
+        self.disconnect_button = QPushButton("Disconnect")
+        self.disconnect_button.clicked.connect(self._disconnect_webdb)
+        self.disconnect_button.setVisible(False)
 
-        self.connection_status = QLabel("Not connected")
-        self.connection_status.setStyleSheet("color: #b56b6b;")
+        self.connection_status = QLabel("WebDB disconnected · Offline mode")
+        self.connection_status.setStyleSheet("color: #d6a35b;")
 
         self.participant_combo = QComboBox()
-        self.participant_combo.setPlaceholderText("Connect to load participants")
+        self.participant_combo.setEditable(True)
+        self.participant_combo.setPlaceholderText("Participant ID")
         self.participant_combo.setEnabled(False)
 
         self.test_combo = QComboBox()
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
-        self.config_source_combo = QComboBox()
-        self.config_source_combo.addItems(["WebDB · synchronizovaná konfigurácia", "Lokálne · núdzové nastavenie"])
-        self.config_source_combo.currentIndexChanged.connect(self._on_configuration_source_changed)
-        self.test_combo.setPlaceholderText("Connect to load tests")
+        self.test_combo.setPlaceholderText("Connect to load test versions")
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Dummy test (no joystick)", "Real joystick"])
 
         selection_group = QGroupBox("Measurement session")
         selection_form = QFormLayout(selection_group)
         selection_form.addRow("Execution mode:", self.mode_combo)
-        selection_form.addRow("Configuration source:", self.config_source_combo)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
-        self.test_summary = QLabel("No test configuration loaded.")
+        self.test_summary = QLabel("Offline mode is active. Configure the test in Offline test settings.")
         self.test_summary.setWordWrap(True)
-        self.test_summary.setMinimumHeight(80)
+        self.test_summary.setMinimumHeight(56)
         self.test_summary.setStyleSheet("padding: 12px; border: 1px solid #59636e;")
 
-        self.run_button = QPushButton("Start selected measurement")
+        self.run_button = QPushButton("Start measurement")
         self.run_button.setMinimumHeight(46)
-        self.run_button.setEnabled(False)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
-        self.advanced_button = QPushButton("Advanced settings")
+        self.advanced_button = QPushButton("Offline test settings")
         self.advanced_button.clicked.connect(self._open_advanced)
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setMinimumHeight(170)
-
-        self.clear_log_button = QPushButton("Clear log")
-        self.clear_log_button.clicked.connect(self.log_output.clear)
+        self.log_output.setMinimumHeight(130)
 
         central = QWidget()
         root = QVBoxLayout(central)
-        root.setContentsMargins(28, 24, 28, 24)
-        root.setSpacing(16)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(12)
 
         title = QLabel("THRUST")
         title.setStyleSheet("font-size: 30px; font-weight: bold;")
-        subtitle = QLabel("Local measurement client · configuration and participant data from WebDB")
+        subtitle = QLabel("Local measurement client · WebDB test versions with local runtime diagnostics")
         subtitle.setStyleSheet("color: #71808d;")
 
         status_row = QHBoxLayout()
         status_row.addWidget(self.connection_status)
         status_row.addStretch()
+        status_row.addWidget(self.connect_button)
+        status_row.addWidget(self.disconnect_button)
         status_row.addWidget(self.advanced_button)
 
         root.addWidget(title)
         root.addWidget(subtitle)
-        root.addWidget(connection_group)
         root.addLayout(status_row)
         root.addWidget(selection_group)
         root.addWidget(self.test_summary)
+        root.addWidget(self.common_page)
         root.addWidget(self.run_button)
         root.addWidget(QLabel("Session log"))
         root.addWidget(self.log_output, 1)
-        root.addWidget(self.clear_log_button)
 
         self.setCentralWidget(central)
+        self._activate_offline_mode(show_dialog=False)
+
+    def _open_login(self) -> None:
+        dialog = LoginDialog(
+            self.server_edit.text().strip() or DEFAULT_WEBDB_URL,
+            self.username_edit.text(),
+            self.password_edit.text(),
+            self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.server_edit.setText(dialog.values()[0])
+            self.username_edit.setText(dialog.values()[1])
+            self.password_edit.setText(dialog.values()[2])
+            self._connect_webdb()
 
     def _connect_webdb(self) -> None:
         try:
-            self.client = WebDbClient(self.server_edit.text().strip())
+            self.client = WebDbClient(self.server_edit.text().strip() or DEFAULT_WEBDB_URL)
             account = self.client.login(self.username_edit.text(), self.password_edit.text())
             participants = self.client.list_participants()
             tests = self.client.list_tests()
 
             self.participant_combo.clear()
             for participant in participants:
-                self.participant_combo.addItem(
-                    participant["participant_code"],
-                    participant["id"],
-                )
+                self.participant_combo.addItem(participant["participant_code"], participant["id"])
 
             self.test_combo.clear()
             for test in tests:
                 if test.get("is_active", False):
-                    self.test_combo.addItem(
-                        f'{test["name"]} · v{test["version"]}',
-                        test,
-                    )
+                    self.test_combo.addItem(f'{test["name"]} · v{test["version"]}', test)
 
+            self.offline_mode = False
+            self.config_source_combo.setCurrentIndex(0)
             self.participant_combo.setEnabled(bool(participants))
             self.test_combo.setEnabled(bool(tests))
             self.connection_status.setText(f'Connected as {account["username"]}')
             self.connection_status.setStyleSheet("color: #4ba878;")
-            self.append_log(f"Loaded {len(participants)} participants and {len(tests)} tests.")
+            self.connect_button.setVisible(False)
+            self.disconnect_button.setVisible(True)
+            self.advanced_button.setVisible(False)
+            self.append_log(f"Loaded {len(participants)} participants and {len(tests)} active tests.")
             self._load_selected_test()
 
         except (WebDbError, KeyError, ValueError) as exc:
-            self.client = None
-            self.connection_status.setText("Connection failed")
-            self.connection_status.setStyleSheet("color: #b56b6b;")
             self.append_log(f"WebDB connection failed: {exc}")
-            QMessageBox.critical(self, "WebDB connection failed", str(exc))
+            self._activate_offline_mode(show_dialog=True, error=str(exc))
+
+    def _disconnect_webdb(self) -> None:
+        self._activate_offline_mode(show_dialog=False)
+        self.append_log("WebDB disconnected. Offline mode is active.")
+
+    def _offline_manifest(self) -> dict[str, Any]:
+        return {
+            "test": {
+                "id": "",
+                "test_code": "LOCAL_OFFLINE",
+                "name": "Local offline SCoPE test",
+                "version": "local",
+                "analysis_profile": "SCOPE_STEP_RESPONSE_V1",
+                "configuration": {},
+            }
+        }
+
+    def _activate_offline_mode(self, show_dialog: bool, error: str = "") -> None:
+        self.offline_mode = True
+        self.client = None
+        self.current_manifest = self._offline_manifest()
+        self.config_source_combo.setCurrentIndex(1)
+
+        self.participant_combo.clear()
+        self.participant_combo.addItem("LOCAL")
+        self.participant_combo.setCurrentText("LOCAL")
+        self.participant_combo.setEnabled(True)
+
+        self.test_combo.clear()
+        self.test_combo.addItem("Local offline SCoPE test · local", self.current_manifest["test"])
+        self.test_combo.setCurrentIndex(0)
+        self.test_combo.setEnabled(True)
+
+        self.connection_status.setText("WebDB disconnected · Offline mode")
+        self.connection_status.setStyleSheet("color: #d6a35b;")
+        self.connect_button.setVisible(True)
+        self.disconnect_button.setVisible(False)
+        self.advanced_button.setVisible(True)
+        self.run_button.setEnabled(True)
+        self.test_summary.setText(
+            "Offline mode is active. Test settings are local-only and are not synchronized to WebDB."
+        )
+        if show_dialog:
+            QMessageBox.warning(
+                self,
+                "WebDB unavailable",
+                f"THRUST switched to offline mode automatically.\n\n{error}",
+            )
+            self._open_advanced()
 
     def _load_selected_test(self, _index: int = -1) -> None:
-        if self.client is None or self.test_combo.currentIndex() < 0:
-            self.run_button.setEnabled(False)
+        if self.offline_mode or self.client is None or self.test_combo.currentIndex() < 0:
             return
 
         selected = self.test_combo.currentData()
@@ -200,14 +288,11 @@ class MainWindow(QMainWindow):
         try:
             self.current_manifest = self.client.get_test_configuration(selected["id"])
             test = self.current_manifest["test"]
-            if self.config_source_combo.currentIndex() == 0:
-                self._apply_web_configuration(test)
+            self._apply_web_configuration(test)
             self.test_summary.setText(
                 f'Loaded {test["name"]} · version {test["version"]}\n'
                 f'Analysis profile: {test["analysis_profile"]}\n'
-                + ("The measurement engine will use the WebDB version-pinned configuration."
-                   if self.config_source_combo.currentIndex() == 0
-                   else "Local emergency settings are selected; WebDB configuration will not be applied.")
+                "The measurement engine will use this WebDB version-pinned configuration."
             )
             self.run_button.setEnabled(self.participant_combo.currentIndex() >= 0)
             self.append_log(f'Loaded test manifest: {test["test_code"]} v{test["version"]}')
@@ -223,12 +308,13 @@ class MainWindow(QMainWindow):
             raise ValueError("Test configuration must be a JSON object.")
 
         config_data = dict(source)
-        for obsolete_key in ("user", "profile_name", "expert_mode", "output_root", "use_dated_subfolders"):
+        for obsolete_key in (
+            "user", "profile_name", "expert_mode", "output_root", "use_dated_subfolders",
+            "joystick_index", "break_axis", "axis_map", "deadzone",
+        ):
             config_data.pop(obsolete_key, None)
-        legacy_mapping = {
-            "sampling_hz": "fps",
-            "timeout_s": "action_timeout_s",
-        }
+
+        legacy_mapping = {"sampling_hz": "fps", "timeout_s": "action_timeout_s"}
         for source_key, target_key in legacy_mapping.items():
             if source_key in config_data and target_key not in config_data:
                 config_data[target_key] = config_data[source_key]
@@ -245,7 +331,10 @@ class MainWindow(QMainWindow):
             for source_key, target_key in visual_mapping.items():
                 if source_key in visual and target_key not in config_data:
                     config_data[target_key] = visual[source_key]
-            for key in ("stick_outline", "stick_fill", "zone_idle_outline", "zone_idle_fill", "zone_ok_outline", "zone_ok_fill"):
+            for key in (
+                "stick_outline", "stick_fill", "zone_idle_outline", "zone_idle_fill",
+                "zone_ok_outline", "zone_ok_fill",
+            ):
                 if key in visual and key not in config_data:
                     config_data[key] = visual[key]
 
@@ -259,26 +348,9 @@ class MainWindow(QMainWindow):
         config = self._configuration_from_web_test(test)
         self.scope_page.apply_scope_config(config, self.common_page)
 
-    def _on_configuration_source_changed(self, index: int) -> None:
-        if index == 0 and self.current_manifest is not None:
-            try:
-                self._apply_web_configuration(self.current_manifest["test"])
-                self.test_summary.setText("WebDB konfigurácia je aktívna. Lokálne nastavenia sa pri spustení ignorujú.")
-                self.append_log("Configuration source: WebDB.")
-            except (KeyError, TypeError, ValueError) as exc:
-                self.test_summary.setText(f"Konfiguráciu WebDB sa nepodarilo použiť: {exc}")
-                self.run_button.setEnabled(False)
-        elif index == 1:
-            self.test_summary.setText("Núdzový lokálny režim. Zmeny v Advanced settings sa nesynchronizujú do WebDB.")
-            self.append_log("Configuration source: local emergency settings.")
-
     def _open_advanced(self) -> None:
         if self.advanced_dialog is None:
-            self.advanced_dialog = AdvancedSettingsDialog(
-                self.common_page,
-                self.scope_page,
-                self,
-            )
+            self.advanced_dialog = AdvancedSettingsDialog(self.scope_page, self)
         self.advanced_dialog.show()
         self.advanced_dialog.raise_()
         self.advanced_dialog.activateWindow()
@@ -287,16 +359,16 @@ class MainWindow(QMainWindow):
         if self.current_manifest is None:
             return
 
-        participant_code = self.participant_combo.currentText().strip()
+        participant_code = self.participant_combo.currentText().strip() or "LOCAL"
         test = self.current_manifest["test"]
 
         try:
             from thrust.runners.scope_runner import run_scope
 
-            if self.config_source_combo.currentIndex() == 0:
-                config = self._configuration_from_web_test(test)
-            else:
+            if self.offline_mode:
                 config = self.scope_page.build_scope_config(self.common_page)
+            else:
+                config = self._configuration_from_web_test(test)
             config.user = participant_code
             config.profile_name = f'{test["test_code"]}_v{test["version"]}'
             config.validate()
@@ -307,7 +379,6 @@ class MainWindow(QMainWindow):
             step_path = ""
             if self.mode_combo.currentIndex() == 0:
                 from thrust.dummy_runner import run_dummy
-
                 raw_path = run_dummy(
                     participant_code=participant_code,
                     test_code=test["test_code"],
@@ -321,13 +392,18 @@ class MainWindow(QMainWindow):
                 step_path = session.step_path
 
             if not raw_path:
-                raise RuntimeError("Meranie nevytvorilo raw log, preto ho nemožno nahrať.")
+                raise RuntimeError("Measurement did not create a raw log.")
 
             analysis = analyze_scope_log(raw_path)
             if step_path and Path(step_path).is_file() and "normalized_step_response" not in analysis:
                 with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
-                    reader = csv.DictReader(handle, delimiter="\\t")
-                    curves = {name: [] for name in ("Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD", "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD")}
+                    reader = csv.DictReader(handle, delimiter="\t")
+                    curves = {
+                        name: [] for name in (
+                            "Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD",
+                            "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD",
+                        )
+                    }
                     for row in reader:
                         for name in curves:
                             if row.get(name) not in (None, ""):
@@ -336,12 +412,16 @@ class MainWindow(QMainWindow):
                         "schema_version": "scope-normalized-response-v1",
                         "columns": curves,
                     }
+
+            if self.offline_mode:
+                self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
+                return
+
             participant_id = self.participant_combo.currentData()
             if not participant_id:
-                raise RuntimeError("Účastník nemá platné serverové ID.")
-
+                raise RuntimeError("Participant has no valid WebDB ID.")
             if self.client is None:
-                raise RuntimeError("WebDB klient nie je pripojený.")
+                raise RuntimeError("WebDB client is not connected.")
 
             uploaded = self.client.upload_measurement(
                 participant_id=str(participant_id),
