@@ -269,8 +269,8 @@ class MainWindow(QMainWindow):
                 self.joystick_selector.addItem(f"{index}: {name}", index)
             if not devices:
                 self.joystick_selector.addItem("No joystick detected", -1)
-            elif previous in range(len(devices)):
-                self.joystick_selector.setCurrentIndex(int(previous))
+            elif isinstance(previous, int) and 0 <= previous < len(devices):
+                self.joystick_selector.setCurrentIndex(previous)
             else:
                 self.joystick_selector.setCurrentIndex(0)
             self.joystick_selector.blockSignals(False)
