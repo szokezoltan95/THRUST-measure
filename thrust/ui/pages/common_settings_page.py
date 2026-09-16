@@ -59,6 +59,11 @@ class CommonSettingsPage(QWidget):
         self.break_axis_spin.setValue(5)
         self.break_axis_spin.setMaximumWidth(80)
 
+        self.reset_axis_spin = QSpinBox()
+        self.reset_axis_spin.setRange(0, 16)
+        self.reset_axis_spin.setValue(6)
+        self.reset_axis_spin.setMaximumWidth(80)
+
         self.output_root_edit = QLineEdit(str(Path.home() / "Documents" / "THRUST" / "scope"))
         self.output_browse_button = QPushButton("Browse")
         self.output_browse_button.clicked.connect(self._browse_output_root)
@@ -111,6 +116,7 @@ class CommonSettingsPage(QWidget):
         runtime_form.addRow("Debug output:", self.debug_output_check)
         runtime_form.addRow("Joystick device:", self.joystick_index_spin)
         runtime_form.addRow("Break button/axis:", self.break_axis_spin)
+        runtime_form.addRow("Reset button/axis:", self.reset_axis_spin)
         runtime_layout.addWidget(runtime_group)
         runtime_layout.addStretch()
 
@@ -186,6 +192,7 @@ class CommonSettingsPage(QWidget):
             "debug_output": self.debug_output_check.isChecked(),
             "joystick_index": self.joystick_index_spin.value(),
             "break_axis": self.break_axis_spin.value(),
+            "reset_axis": self.reset_axis_spin.value(),
             "deadzone": self._parse_deadzone(),
             "axis_map": {
                 "AILE": self.aile_axis_spin.value(),
@@ -216,6 +223,7 @@ class CommonSettingsPage(QWidget):
         self.debug_output_check.setChecked(data.get("debug_output", False))
         self.joystick_index_spin.setValue(data.get("joystick_index", 0))
         self.break_axis_spin.setValue(data.get("break_axis", 5))
+        self.reset_axis_spin.setValue(data.get("reset_axis", 6))
         deadzone = data.get("deadzone", [100, 100, 100, 100])
         self.deadzone_edit.setText(",".join(str(value) for value in deadzone))
         axis_map = data.get("axis_map", {})
