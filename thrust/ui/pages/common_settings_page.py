@@ -186,6 +186,7 @@ class CommonSettingsPage(QWidget):
         try:
             pygame.init()
             pygame.joystick.init()
+            pygame.event.pump()
             return [pygame.joystick.Joystick(index).get_name() for index in range(pygame.joystick.get_count())]
         except Exception:
             return []
