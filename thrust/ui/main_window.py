@@ -104,8 +104,7 @@ class AdvancedSettingsDialog(QDialog):
         self.tabs.setTabVisible(self.simple_tab_index, visible)
 
     def set_measurement_mode(self, is_simple: bool) -> None:
-        if self.tabs.isVisible():
-            self.tabs.setCurrentIndex(self.simple_tab_index if is_simple else self.scope_tab_index)
+        self.tabs.setCurrentIndex(self.simple_tab_index if is_simple else self.scope_tab_index)
 
 
 class MainWindow(QMainWindow):
@@ -580,6 +579,8 @@ class MainWindow(QMainWindow):
                 return
 
             runtime = self.common_page.export_common_dict()
+            selected_joystick = self.joystick_selector.currentData()
+            runtime["joystick_index"] = int(selected_joystick) if isinstance(selected_joystick, int) and selected_joystick >= 0 else 0
             if is_simple:
                 config = (
                     self.simple_page.build_simple_config()
