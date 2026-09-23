@@ -72,7 +72,7 @@ class WebDbClient:
         path = Path(raw_log_path)
         raw_bytes = path.read_bytes()
         return self._request_json(
-            "/api/admin/measurements",
+            "/api/student/measurements" if self.role == "student" else "/api/admin/measurements",
             method="POST",
             body={
                 "participant_id": participant_id,
