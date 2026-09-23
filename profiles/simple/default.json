@@ -1,0 +1,16 @@
+{
+  "sampling_hz": 100,
+  "action_timeout_s": 5.0,
+  "hold_time_s": 1.0,
+  "countdown_s": 3,
+  "zoom_px_per_m": 500,
+  "target_zone_radius_px": 100,
+  "completion_radius_m": 0.1,
+  "target_x_limit_m": 1.5,
+  "target_y_max_m": 2.0,
+  "field_width_px": 1500,
+  "field_height_px": 1000,
+  "mass_kg": 0.8,
+  "max_thrust_n": 16.0,
+  "drag_coefficient": 0.3
+}

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import csv
+import os
+import sys
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -28,9 +31,14 @@ from PyQt6.QtWidgets import (
 )
 
 from scope.scope_config import ScopeConfig
+from simple.simple_config import SimpleConfig
 from thrust.analysis.scope_log import analyze_scope_log
+from thrust.analysis.simple_log import analyze_simple_log, save_step_graph, write_step_response
+from thrust.paths import ASSETS_DIR, SIMPLE_OUTPUT_DIR
+from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
+from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
 from thrust.webdb_client import WebDbClient, WebDbError
 
 
@@ -74,14 +82,15 @@ class LoginDialog(QDialog):
 class AdvancedSettingsDialog(QDialog):
     """State-aware settings dialog for runtime and, when offline, test settings."""
 
-    def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, parent: QWidget) -> None:
+    def __init__(self, common_page: CommonSettingsPage, scope_page: ScopeSettingsPage, simple_page: SimpleSettingsPage, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("THRUST advanced settings")
-        self.resize(760, 680)
+        self.setWindowTitle("THRUST settings")
+        self.resize(820, 720)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(common_page, "Runtime and output")
-        self.scope_tab_index = self.tabs.addTab(scope_page, "Offline test configuration")
+        self.runtime_tab_index = self.tabs.addTab(common_page, "Joystick and runtime")
+        self.scope_tab_index = self.tabs.addTab(scope_page, "Offline SCoPE")
+        self.simple_tab_index = self.tabs.addTab(simple_page, "Offline SimPLE")
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -92,6 +101,11 @@ class AdvancedSettingsDialog(QDialog):
 
     def set_offline_visible(self, visible: bool) -> None:
         self.tabs.setTabVisible(self.scope_tab_index, visible)
+        self.tabs.setTabVisible(self.simple_tab_index, visible)
+
+    def set_measurement_mode(self, is_simple: bool) -> None:
+        if self.tabs.isVisible():
+            self.tabs.setCurrentIndex(self.simple_tab_index if is_simple else self.scope_tab_index)
 
 
 class MainWindow(QMainWindow):
@@ -106,6 +120,7 @@ class MainWindow(QMainWindow):
 
         self.common_page = CommonSettingsPage()
         self.scope_page = ScopeSettingsPage()
+        self.simple_page = SimpleSettingsPage()
         self.advanced_dialog: AdvancedSettingsDialog | None = None
         self.common_page.joystick_status_changed.connect(self._set_joystick_status)
         self.common_page.joystick_values_changed.connect(self._update_joystick_feedback)
@@ -193,9 +208,22 @@ class MainWindow(QMainWindow):
         root.setSpacing(10)
 
         title = QLabel("THRUST")
-        title.setStyleSheet("font-size: 28px; font-weight: bold;")
-        subtitle = QLabel("Local measurement client · WebDB test versions with local runtime diagnostics")
-        subtitle.setStyleSheet("color: #71808d;")
+        title.setStyleSheet("font-size: 30px; font-weight: 800; letter-spacing: 2px; color: #eaf5ff;")
+        subtitle = QLabel("UAV CONTROL PERFORMANCE · MEASUREMENT CENTER")
+        subtitle.setStyleSheet("color: #7892aa; letter-spacing: 1px;")
+        title_row = QHBoxLayout()
+        title_block = QVBoxLayout()
+        title_block.addWidget(title)
+        title_block.addWidget(subtitle)
+        title_row.addLayout(title_block)
+        title_row.addStretch()
+        for filename, label in (("scope_logo.png", "SCoPE"), ("simple_logo.png", "SimPLE")):
+            logo_path = ASSETS_DIR / filename
+            if logo_path.is_file():
+                logo = QLabel()
+                logo.setToolTip(label)
+                logo.setPixmap(QPixmap(str(logo_path)).scaled(124, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                title_row.addWidget(logo)
 
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
@@ -228,8 +256,7 @@ class MainWindow(QMainWindow):
         columns.setColumnStretch(0, 1)
         columns.setColumnStretch(1, 1)
 
-        root.addWidget(title)
-        root.addWidget(subtitle)
+        root.addLayout(title_row)
         root.addWidget(session_ribbon)
         root.addLayout(columns, 1)
         root.addWidget(QLabel("Session log"))
@@ -376,15 +403,16 @@ class MainWindow(QMainWindow):
         self._activate_offline_mode(show_dialog=False)
         self.append_log("WebDB disconnected. Offline mode is active.")
 
-    def _offline_manifest(self) -> dict[str, Any]:
+    def _offline_manifest(self, mode: str = "SCOPE") -> dict[str, Any]:
+        is_simple = mode.upper() == "SIMPLE"
         return {
             "test": {
                 "id": "",
-                "test_code": "LOCAL_OFFLINE",
-                "name": "Local offline SCoPE test",
+                "test_code": "LOCAL_SIMPLE" if is_simple else "LOCAL_SCOPE",
+                "name": "Local offline SimPLE test" if is_simple else "Local offline SCoPE test",
                 "version": "local",
-                "analysis_profile": "SCOPE_STEP_RESPONSE_V1",
-                "configuration": {},
+                "analysis_profile": "SIMPLE_FLIGHT_V1" if is_simple else "SCOPE_STEP_RESPONSE_V1",
+                "configuration": SimpleConfig().to_dict() if is_simple else {},
             }
         }
 
@@ -399,10 +427,16 @@ class MainWindow(QMainWindow):
         self.participant_combo.setCurrentText("LOCAL")
         self.participant_combo.setEnabled(True)
 
+        self.test_combo.blockSignals(True)
         self.test_combo.clear()
-        self.test_combo.addItem("Local offline SCoPE test · local", self.current_manifest["test"])
+        scope_test = self._offline_manifest("SCOPE")["test"]
+        simple_test = self._offline_manifest("SIMPLE")["test"]
+        self.test_combo.addItem("SCoPE · local offline", scope_test)
+        self.test_combo.addItem("SimPLE · local offline", simple_test)
         self.test_combo.setCurrentIndex(0)
+        self.test_combo.blockSignals(False)
         self.test_combo.setEnabled(True)
+        self._load_selected_test(0)
 
         self.connection_status.setText("● WebDB DISCONNECTED · Offline mode")
         self.connection_status.setStyleSheet("color: #d6a35b;")
@@ -421,7 +455,25 @@ class MainWindow(QMainWindow):
             self._open_advanced()
 
     def _load_selected_test(self, _index: int = -1) -> None:
-        if self.offline_mode or self.client is None or self.test_combo.currentIndex() < 0:
+        if self.test_combo.currentIndex() < 0:
+            return
+        if self.offline_mode:
+            selected = self.test_combo.currentData()
+            if not isinstance(selected, dict):
+                self.current_manifest = None
+                self.run_button.setEnabled(False)
+                return
+            self.current_manifest = {"test": selected}
+            is_simple = str(selected.get("analysis_profile", "")).upper().startswith("SIMPLE")
+            if is_simple:
+                self.simple_page.load_simple_config(SimpleConfig.from_dict(selected.get("configuration")))
+            else:
+                self.scope_page.load_scope_config(ScopeConfig())
+            if self.advanced_dialog is not None:
+                self.advanced_dialog.set_measurement_mode(is_simple)
+            self._update_run_availability()
+            return
+        if self.client is None:
             return
 
         selected = self.test_combo.currentData()
@@ -482,14 +534,28 @@ class MainWindow(QMainWindow):
         config.validate()
         return config
 
+    def _simple_configuration_from_web_test(self, test: dict[str, Any]) -> SimpleConfig:
+        source = test.get("configuration")
+        if not isinstance(source, dict):
+            raise ValueError("SimPLE configuration must be a JSON object.")
+        return SimpleConfig.from_dict(source)
+
     def _apply_web_configuration(self, test: dict[str, Any]) -> None:
-        config = self._configuration_from_web_test(test)
-        self.scope_page.apply_scope_config(config, self.common_page)
+        is_simple = str(test.get("analysis_profile", "")).upper().startswith("SIMPLE")
+        if is_simple:
+            self.simple_page.load_simple_config(self._simple_configuration_from_web_test(test))
+        else:
+            config = self._configuration_from_web_test(test)
+            self.scope_page.apply_scope_config(config, self.common_page)
+        if self.advanced_dialog is not None:
+            self.advanced_dialog.set_measurement_mode(is_simple)
 
     def _open_advanced(self) -> None:
         if self.advanced_dialog is None:
-            self.advanced_dialog = AdvancedSettingsDialog(self.common_page, self.scope_page, self)
+            self.advanced_dialog = AdvancedSettingsDialog(self.common_page, self.scope_page, self.simple_page, self)
         self.advanced_dialog.set_offline_visible(self.offline_mode)
+        if self.current_manifest:
+            self.advanced_dialog.set_measurement_mode(str(self.current_manifest["test"].get("analysis_profile", "")).upper().startswith("SIMPLE"))
         self.advanced_dialog.show()
         self.advanced_dialog.raise_()
         self.advanced_dialog.activateWindow()
@@ -500,52 +566,84 @@ class MainWindow(QMainWindow):
 
         participant_code = self.participant_combo.currentText().strip() or "LOCAL"
         test = self.current_manifest["test"]
+        profile_name = f'{test["test_code"]}_v{test["version"]}'
+        is_simple = (
+            str(test.get("analysis_profile", "")).upper().startswith("SIMPLE")
+            or str(test.get("test_code", "")).upper().startswith("SIMPLE")
+        )
 
         try:
-            from thrust.runners.scope_runner import run_scope
-
             if not self.common_page.joystick_active:
                 message = "Cannot start measurement: no joystick is connected."
                 self.append_log(message)
                 QMessageBox.warning(self, "Joystick unavailable", message)
                 return
 
-            if self.offline_mode:
-                config = self.scope_page.build_scope_config(self.common_page)
+            runtime = self.common_page.export_common_dict()
+            if is_simple:
+                config = (
+                    self.simple_page.build_simple_config()
+                    if self.offline_mode
+                    else self._simple_configuration_from_web_test(test)
+                )
+                self.append_log(f"Starting SimPLE {test['test_code']} v{test['version']} for participant {participant_code}.")
+                session = run_simple(
+                    config, runtime, participant=participant_code, profile_name=profile_name,
+                    log_callback=self.append_log,
+                )
+                raw_path = session.logfile_path
+                if not raw_path:
+                    raise RuntimeError("SimPLE did not create a raw log.")
+                analysis = analyze_simple_log(raw_path, started_at=session.started_at)
+                base_dir = Path(raw_path).parent.parent
+                if runtime.get("save_step_file", True):
+                    step_path = base_dir / "steps" / (Path(raw_path).stem + "_step.tsv")
+                    analysis.setdefault("artifacts", {})["step_response"] = Path(
+                        write_step_response(step_path, analysis)
+                    ).name
+                if runtime.get("save_graph_pdf", True):
+                    graph_path = base_dir / "graphs" / (Path(raw_path).stem + "_response.pdf")
+                    analysis.setdefault("artifacts", {})["step_response_graph"] = Path(
+                        save_step_graph(graph_path, analysis)
+                    ).name
+                    if runtime.get("auto_open_graph", False):
+                        self._open_local_file(graph_path)
             else:
-                config = self._configuration_from_web_test(test)
-            config.user = participant_code
-            config.profile_name = f'{test["test_code"]}_v{test["version"]}'
-            config.validate()
-
-            self.append_log(
-                f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
-            )
-            session = run_scope(config, log_callback=self.append_log)
-            raw_path = session.logfile_path
-            step_path = session.step_path
-
-            if not raw_path:
-                raise RuntimeError("Measurement did not create a raw log.")
-
-            analysis = analyze_scope_log(raw_path)
-            if step_path and Path(step_path).is_file() and "normalized_step_response" not in analysis:
-                with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
-                    reader = csv.DictReader(handle, delimiter="\t")
-                    curves = {
-                        name: [] for name in (
-                            "Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD",
-                            "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD",
-                        )
-                    }
-                    for row in reader:
-                        for name in curves:
-                            if row.get(name) not in (None, ""):
-                                curves[name].append(float(row[name]))
-                    analysis["normalized_step_response"] = {
-                        "schema_version": "scope-normalized-response-v1",
-                        "columns": curves,
-                    }
+                from thrust.runners.scope_runner import run_scope
+                config = (
+                    self.scope_page.build_scope_config(self.common_page)
+                    if self.offline_mode
+                    else self._configuration_from_web_test(test)
+                )
+                config.user = participant_code
+                config.profile_name = profile_name
+                config.validate()
+                self.append_log(
+                    f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
+                )
+                session = run_scope(config, log_callback=self.append_log)
+                raw_path = session.logfile_path
+                step_path = session.step_path
+                if not raw_path:
+                    raise RuntimeError("Measurement did not create a raw log.")
+                analysis = analyze_scope_log(raw_path)
+                if step_path and Path(step_path).is_file() and "normalized_step_response" not in analysis:
+                    with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
+                        reader = csv.DictReader(handle, delimiter="\\t")
+                        curves = {
+                            name: [] for name in (
+                                "Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD",
+                                "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD",
+                            )
+                        }
+                        for row in reader:
+                            for name in curves:
+                                if row.get(name) not in (None, ""):
+                                    curves[name].append(float(row[name]))
+                        analysis["normalized_step_response"] = {
+                            "schema_version": "scope-normalized-response-v1",
+                            "columns": curves,
+                        }
 
             if self.offline_mode:
                 self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
@@ -572,6 +670,18 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.append_log(f"Measurement failed: {type(exc).__name__}: {exc}")
             QMessageBox.critical(self, "Measurement failed", f"{type(exc).__name__}: {exc}")
+
+    @staticmethod
+    def _open_local_file(path: Path) -> None:
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                os.system(f'open "{path}"')
+            else:
+                os.system(f'xdg-open "{path}"')
+        except Exception:
+            pass
 
     def append_log(self, message: str) -> None:
         self.log_output.appendPlainText(message)
