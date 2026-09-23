@@ -74,11 +74,21 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
         missing = REQUIRED_COLUMNS - set(reader.fieldnames or [])
         if missing:
             raise SimpleLogError(f"SimPLE log is missing columns: {sorted(missing)}")
+        numeric_columns = REQUIRED_COLUMNS | (
+            {"IN_ZONE", "ACTION", "RESET", "ROLL", "THROTTLE"}
+            & set(reader.fieldnames or [])
+        )
         for line, raw in enumerate(reader, start=2):
             try:
-                row = {name: float(raw[name]) for name in REQUIRED_COLUMNS}
+                row = {
+                    name: float(raw[name])
+                    for name in numeric_columns
+                    if raw.get(name) not in (None, "")
+                }
             except (TypeError, ValueError, KeyError) as exc:
                 raise SimpleLogError(f"Invalid numeric value on line {line}.") from exc
+            if not REQUIRED_COLUMNS.issubset(row):
+                raise SimpleLogError(f"Required values are missing on line {line}.")
             if not all(math.isfinite(value) for value in row.values()):
                 raise SimpleLogError(f"Non-finite value on line {line}.")
             rows.append(row)
