@@ -50,7 +50,7 @@ class LoginDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("WebDB address:", self.server_edit)
-        form.addRow("E-mail / username:", self.username_edit)
+        form.addRow("E-mail / Participant ID / username:", self.username_edit)
         form.addRow("Password:", self.password_edit)
 
         buttons = QDialogButtonBox(
