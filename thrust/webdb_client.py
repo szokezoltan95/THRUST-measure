@@ -22,6 +22,8 @@ class WebDbClient:
         self.base_url = base_url.rstrip("/") + "/"
         self.timeout = timeout
         self.csrf_token: str | None = None
+        self.role: str | None = None
+        self.account: dict[str, Any] | None = None
         self._opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
     @classmethod
@@ -35,6 +37,8 @@ class WebDbClient:
             body={"username": username, "password": password},
         )
         self.csrf_token = payload.get("csrf_token")
+        self.role = payload.get("role")
+        self.account = payload
         if not self.csrf_token:
             raise WebDbError("Web database did not return a CSRF token.")
         return payload
@@ -43,10 +47,12 @@ class WebDbClient:
         return self._request_list("/api/admin/participants")
 
     def list_tests(self) -> list[dict[str, Any]]:
-        return self._request_list("/api/admin/tests")
+        path = "/api/student/tests" if self.role == "student" else "/api/admin/tests"
+        return self._request_list(path)
 
     def get_test_configuration(self, test_id: str) -> dict[str, Any]:
-        manifest = self._request_json(f"/api/admin/tests/{test_id}/configuration")
+        prefix = "/api/student/tests" if self.role == "student" else "/api/admin/tests"
+        manifest = self._request_json(f"{prefix}/{test_id}/configuration")
         if manifest.get("schema_version") != "test-configuration-v1":
             raise WebDbError("Unsupported test configuration schema.")
         if not isinstance(manifest.get("test"), dict):
