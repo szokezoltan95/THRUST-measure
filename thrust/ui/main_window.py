@@ -331,12 +331,23 @@ class MainWindow(QMainWindow):
         try:
             self.client = WebDbClient(self.server_edit.text().strip() or DEFAULT_WEBDB_URL)
             account = self.client.login(self.username_edit.text(), self.password_edit.text())
-            participants = self.client.list_participants()
             tests = self.client.list_tests()
+            role = str(account.get("role", ""))
 
             self.participant_combo.clear()
-            for participant in participants:
-                self.participant_combo.addItem(participant["participant_code"], participant["id"])
+            if role == "student":
+                participant_id = account.get("participant_id")
+                participant_code = account.get("participant_code") or participant_id or "STUDENT"
+                self.participant_combo.addItem(str(participant_code), participant_id)
+                self.participant_combo.setCurrentIndex(0)
+                self.participant_combo.setEditable(False)
+                self.participant_combo.setEnabled(False)
+            else:
+                participants = self.client.list_participants()
+                for participant in participants:
+                    self.participant_combo.addItem(participant["participant_code"], participant["id"])
+                self.participant_combo.setEditable(True)
+                self.participant_combo.setEnabled(bool(participants))
 
             self.test_combo.clear()
             for test in tests:
@@ -345,16 +356,16 @@ class MainWindow(QMainWindow):
 
             self.offline_mode = False
             self.config_source_combo.setCurrentIndex(0)
-            self.participant_combo.setEnabled(bool(participants))
             self.test_combo.setEnabled(bool(tests))
-            self.connection_status.setText(f'● WebDB CONNECTED · {account["username"]}')
+            identity = account.get("participant_code") if role == "student" else account.get("username", "")
+            self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
             self.connection_status.setStyleSheet("font-weight: 700; color: #52d18a;")
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
             self.advanced_button.setVisible(True)
             if self.advanced_dialog is not None:
                 self.advanced_dialog.set_offline_visible(False)
-            self.append_log(f"Loaded {len(participants)} participants and {len(tests)} active tests.")
+            self.append_log(f"Loaded {len(tests)} active tests for {role or 'user'}.")
             self._load_selected_test()
 
         except (WebDbError, KeyError, ValueError) as exc:
