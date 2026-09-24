@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sys
 from dataclasses import fields
@@ -657,6 +658,11 @@ class MainWindow(QMainWindow):
                     ).name
                     if runtime.get("auto_open_graph", False):
                         self._open_local_file(graph_path)
+                analysis_path = base_dir / "analysis" / (Path(raw_path).stem + "_analysis.json")
+                analysis_path.parent.mkdir(parents=True, exist_ok=True)
+                analysis.setdefault("artifacts", {})["analysis_json"] = analysis_path.name
+                analysis_path.write_text(json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")
+                self.append_log(f"SimPLE analysis saved: {analysis_path}")
             else:
                 from thrust.runners.scope_runner import run_scope
                 config = (
