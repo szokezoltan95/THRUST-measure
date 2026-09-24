@@ -13,7 +13,7 @@ class SimpleGUI:
 
     def __init__(self, config: SimpleConfig, *, fullscreen: bool = True, topmost: bool = True, background_path: str | Path | None = None) -> None:
         self.config = config
-        self.background_path = Path(background_path) if background_path else Path(ASSETS_DIR) / "simple_background.png"
+        self.background_path = Path(background_path) if background_path else None
         self.root = tk.Tk()
         self.root.title("SimPLE · 2D Flight")
         self.root.configure(bg="#000000")
@@ -23,9 +23,11 @@ class SimpleGUI:
         self.running = True
         self._photo = None
 
-        self.canvas = tk.Canvas(self.root, bg="#000000", highlightthickness=0)
+        self.canvas = tk.Canvas(self.root, bg="#8eb8ca", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
         self.bg_id = None
+        self.default_ground_id = self.canvas.create_rectangle(0, 0, 1, 1, fill="#536c54", outline="")
+        self.default_horizon_id = self.canvas.create_line(0, 0, 1, 1, fill="#e5eee0", width=2)
         self.hud_id = self.canvas.create_text(
             28, 24, anchor="nw", text="SimPLE  ·  2D FLIGHT CONTROL",
             fill="#ffffff", font=("Segoe UI", 20, "bold"),
@@ -34,11 +36,12 @@ class SimpleGUI:
         self.copter_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#1e2cff", width=1)
         self.center_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#ffffff", width=1)
         self.direction_id = self.canvas.create_line(0, 0, 0, 0, fill="#ffffff", width=5, arrow=tk.LAST)
+        self.hud_panel_id = self.canvas.create_rectangle(12, 0, 620, 0, fill="#061321", stipple="gray50", outline="#536b80", width=1)
         self.status_id = self.canvas.create_text(
-            28, 60, anchor="nw", text="", fill="#ffffff", font=("Segoe UI", 14),
+            28, 0, anchor="nw", text="", fill="#eaf2f8", font=("Segoe UI", 12),
         )
         self.prompt_id = self.canvas.create_text(
-            0, 0, anchor="center", text="", fill="#ff4b55", font=("Segoe UI", 30, "bold"),
+            28, 0, anchor="nw", text="", fill="#ff6b72", font=("Segoe UI", 18, "bold"),
         )
         self.zone_color("red")
         self.root.update_idletasks()
@@ -51,7 +54,7 @@ class SimpleGUI:
 
     def _load_background(self) -> None:
         source = self.background_path
-        if not source.is_file():
+        if source is None or not source.is_file():
             return
         try:
             from PIL import Image, ImageTk
@@ -62,7 +65,14 @@ class SimpleGUI:
             self._source_image = None
 
     def _redraw_background(self, _event=None) -> None:
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+        horizon = height * 0.82
+        self.canvas.coords(self.default_ground_id, 0, horizon, width, height)
+        self.canvas.coords(self.default_horizon_id, 0, horizon, width, horizon)
         if not hasattr(self, "_source_image"):
+            self._place_prompt()
+            self._place_status()
             return
         try:
             from PIL import Image, ImageOps, ImageTk
@@ -83,31 +93,34 @@ class SimpleGUI:
         width = max(1, self.canvas.winfo_width())
         height = max(1, self.canvas.winfo_height())
         origin_x = width / 2
-        ground_y = height - max(70, height * 0.08)
-        margin_m = self.config.completion_radius_m + 0.05
-        horizontal_limit = max(1, width / 2 - 40) / (
-            self.config.zoom_px_per_m * (self.config.target_x_limit_m + margin_m)
-        )
-        vertical_limit = max(1, ground_y - max(95, height * 0.12)) / (
-            self.config.zoom_px_per_m * (self.config.target_y_max_m + margin_m)
-        )
-        scale = min(
-            width / self.config.field_width_px,
-            height / self.config.field_height_px,
-            horizontal_limit, vertical_limit,
-        )
+        ground_y = height - max(110, height * 0.14)
+        world_height = self.config.world_height_m
+        usable_width = max(1, width - 80)
+        usable_height = max(1, ground_y - 40)
+        scale = min(usable_width / self.config.world_width_m, usable_height / world_height)
         return origin_x, ground_y, scale
 
     def _screen(self, x_m: float, y_m: float) -> tuple[float, float]:
         origin_x, ground_y, scale = self._origin()
-        return origin_x + x_m * self.config.zoom_px_per_m * scale, ground_y - y_m * self.config.zoom_px_per_m * scale
+        return origin_x + x_m * scale, ground_y - y_m * scale
 
     def _place_prompt(self) -> None:
-        self.canvas.coords(self.prompt_id, self.canvas.winfo_width() / 2, self.canvas.winfo_height() * 0.50)
+        self._place_status()
+        height = max(1, self.canvas.winfo_height())
+        self.canvas.coords(self.prompt_id, 28, height - 48)
+        self.canvas.coords(self.hud_panel_id, 12, height - 96, min(760, self.canvas.winfo_width() - 12), height - 12)
+        self.canvas.tag_raise(self.hud_panel_id)
+        self.canvas.tag_raise(self.status_id)
+        self.canvas.tag_raise(self.prompt_id)
+
+    def _place_status(self) -> None:
+        height = max(1, self.canvas.winfo_height())
+        if hasattr(self, "status_id"):
+            self.canvas.coords(self.status_id, 28, height - 84)
 
     def update_target(self, target: tuple[float, float]) -> None:
         x, y = self._screen(*target)
-        radius = self.config.completion_radius_m * self.config.zoom_px_per_m * self._origin()[2]
+        radius = self.config.completion_radius_m * self._origin()[2]
         self.canvas.coords(self.target_id, x - radius, y - radius, x + radius, y + radius)
 
     def update_copter(self, position: tuple[float, float], angle_rad: float) -> None:
@@ -123,14 +136,16 @@ class SimpleGUI:
         )
 
     def zone_color(self, state: str) -> None:
-        color = "#00cc00" if state == "green" else "#ff0000"
-        self.canvas.itemconfigure(self.target_id, fill="", outline=color)
+        fill = self.config.zone_ok_fill if state == "green" else self.config.zone_idle_fill
+        outline = self.config.zone_ok_outline if state == "green" else self.config.zone_idle_outline
+        self.canvas.itemconfigure(self.target_id, fill=fill, outline=outline)
 
     def update_status(self, completed: int, timed_out: int, resets: int, elapsed_s: float) -> None:
         self.canvas.itemconfigure(
             self.status_id,
             text=f"COMPLETED  {completed:03d}     TIMEOUTS  {timed_out:03d}     RESETS  {resets:02d}     ELAPSED  {elapsed_s:0.1f} s",
         )
+        self._place_prompt()
 
     def set_prompt(self, text: str) -> None:
         self._place_prompt()
