@@ -84,9 +84,9 @@ class WebDbClient:
             raise WebDbError(f"Could not download SimPLE background: {exc}") from exc
         if len(content) > 5_000_000:
             raise WebDbError("SimPLE background exceeds the 5 MB limit.")
-        if content_type == "image/png" and content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if content_type == "image/png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
             suffix = ".png"
-        elif content_type == "image/jpeg" and content.startswith(b"\\xff\\xd8\\xff"):
+        elif content_type == "image/jpeg" and content.startswith(b"\xff\xd8\xff"):
             suffix = ".jpg"
         else:
             raise WebDbError("WebDB returned an unsupported background image.")
