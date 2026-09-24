@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QTimer, QSize, Qt
+from PyQt6.QtGui import QImageReader, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -256,7 +256,14 @@ class MainWindow(QMainWindow):
         for filename, label in (("scope_logo.png", "SCOPE"), ("simple_logo.png", "SIMPLE")):
             logo_path = ASSETS_DIR / filename
             if logo_path.is_file():
-                self.mode_logos[label] = QPixmap(str(logo_path))
+                reader = QImageReader(str(logo_path))
+                reader.setAutoTransform(True)
+                source_size = reader.size()
+                if source_size.isValid():
+                    reader.setScaledSize(source_size.scaled(QSize(520, 152), Qt.AspectRatioMode.KeepAspectRatio))
+                image = reader.read()
+                if not image.isNull():
+                    self.mode_logos[label] = QPixmap.fromImage(image)
 
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
