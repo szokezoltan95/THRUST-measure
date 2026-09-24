@@ -50,6 +50,8 @@ class SimpleGUI:
         self.root.bind("<Configure>", self._redraw_background)
         self.update_status(0, 0, 0, 0.0)
         self._place_prompt()
+        # Keep the aircraft visible during arming and the countdown.
+        self.update_copter((0.0, 0.0), 0.0)
         self.root.update()
 
     def _load_background(self) -> None:
@@ -125,7 +127,9 @@ class SimpleGUI:
 
     def update_copter(self, position: tuple[float, float], angle_rad: float) -> None:
         x, y = self._screen(*position)
-        radius = max(9, self._origin()[2] * 25)
+        # _origin now returns pixels per meter; the earlier 25 was a pixel
+        # size multiplier for a dimensionless fit scale, so cap the sprite.
+        radius = max(10, min(28, self._origin()[2] * 0.07))
         self.canvas.coords(self.copter_id, x - radius, y - radius, x + radius, y + radius)
         self.canvas.coords(self.center_id, x - 3, y - 3, x + 3, y + 3)
         self.canvas.itemconfigure(self.center_id, fill="#1e2cff", outline="#1e2cff")
