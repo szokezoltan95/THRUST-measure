@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QTimer, QSize, Qt
-from PyQt6.QtGui import QImageReader, QPixmap
+from PyQt6.QtGui import QImageIOHandler, QImageReader, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -259,10 +259,18 @@ class MainWindow(QMainWindow):
                 reader = QImageReader(str(logo_path))
                 reader.setAutoTransform(True)
                 source_size = reader.size()
-                if source_size.isValid():
-                    reader.setScaledSize(source_size.scaled(QSize(520, 152), Qt.AspectRatioMode.KeepAspectRatio))
+                target_size = source_size.scaled(QSize(520, 152), Qt.AspectRatioMode.KeepAspectRatio)
+                can_scale_while_reading = reader.supportsOption(QImageIOHandler.ImageOption.ScaledSize)
+                estimated_bytes = source_size.width() * source_size.height() * 4
+                if can_scale_while_reading:
+                    reader.setScaledSize(target_size)
+                elif estimated_bytes > 180 * 1024 * 1024:
+                    # Keep the app startup safe when a PNG decoder cannot downsample this oversized asset.
+                    continue
                 image = reader.read()
                 if not image.isNull():
+                    if not can_scale_while_reading:
+                        image = image.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                     self.mode_logos[label] = QPixmap.fromImage(image)
 
         session_actions = QWidget()
