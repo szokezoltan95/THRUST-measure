@@ -152,6 +152,8 @@ class MainWindow(QMainWindow):
         self.participant_combo.setEditable(True)
         self.participant_combo.setPlaceholderText("Participant ID")
         self.participant_combo.setEnabled(False)
+        self.participant_combo.currentIndexChanged.connect(lambda _: self._update_run_availability())
+        self.participant_combo.editTextChanged.connect(lambda _: self._update_run_availability())
 
         self.test_combo = QComboBox()
         self.test_combo.setPlaceholderText("Connect to load test versions")
@@ -319,7 +321,15 @@ class MainWindow(QMainWindow):
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
-        self.run_button.setEnabled(bool(connected and self.current_manifest and self.test_combo.currentIndex() >= 0))
+        participant_ready = bool(
+            self.participant_combo.currentText().strip()
+            if self.offline_mode
+            else self.participant_combo.currentData()
+        )
+        self.run_button.setEnabled(bool(
+            connected and self.current_manifest and self.test_combo.currentIndex() >= 0
+            and participant_ready
+        ))
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
@@ -515,7 +525,7 @@ class MainWindow(QMainWindow):
             self.current_manifest = self.client.get_test_configuration(selected["id"])
             test = self.current_manifest["test"]
             self._apply_web_configuration(test)
-            self.run_button.setEnabled(self.participant_combo.currentIndex() >= 0)
+            self._update_run_availability()
             self.append_log(f'Loaded test manifest: {test["test_code"]} v{test["version"]}')
         except (WebDbError, KeyError, TypeError, ValueError) as exc:
             self.current_manifest = None
