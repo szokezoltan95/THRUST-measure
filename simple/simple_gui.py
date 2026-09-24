@@ -45,7 +45,7 @@ class SimpleGUI:
         self._load_background()
         self.root.bind("<Escape>", lambda _event: self.close())
         self.root.bind("<Configure>", self._redraw_background)
-        self.update_status(0, 0, 0.0)
+        self.update_status(0, 0, 0, 0.0)
         self._place_prompt()
         self.root.update()
 
@@ -114,10 +114,10 @@ class SimpleGUI:
         color = "#00cc00" if state == "green" else "#ff0000"
         self.canvas.itemconfigure(self.target_id, fill="", outline=color)
 
-    def update_status(self, actions: int, resets: int, elapsed_s: float) -> None:
+    def update_status(self, completed: int, timed_out: int, resets: int, elapsed_s: float) -> None:
         self.canvas.itemconfigure(
             self.status_id,
-            text=f"COMPLETED  {actions:03d}     RESETS  {resets:02d}     ELAPSED  {elapsed_s:0.1f} s",
+            text=f"COMPLETED  {completed:03d}     TIMEOUTS  {timed_out:03d}     RESETS  {resets:02d}     ELAPSED  {elapsed_s:0.1f} s",
         )
 
     def set_prompt(self, text: str) -> None:
