@@ -130,7 +130,11 @@ def run_simple_session(
         pygame.quit()
         raise RuntimeError("The configured SimPLE control axis is missing on the selected joystick.")
 
-    gui = SimpleGUI(config, fullscreen=bool(runtime.get("fullscreen", True)), topmost=bool(runtime.get("topmost", True)))
+    gui = SimpleGUI(
+        config, fullscreen=bool(runtime.get("fullscreen", True)),
+        topmost=bool(runtime.get("topmost", True)),
+        background_path=runtime.get("background_image_path"),
+    )
     copter = Copter(config)
     logfile_path = _output_path(runtime, participant, profile_name)
     started = datetime.now(timezone.utc)
@@ -179,9 +183,8 @@ def run_simple_session(
                     copter.reset()
                     reset_count += 1
                 was_reset = reset_active
-                distance_x = abs(copter.position[0] - target[0])
-                distance_y = abs(copter.position[1] - target[1])
-                in_zone = distance_x <= config.completion_radius_m and distance_y <= config.completion_radius_m
+                distance = math.dist(copter.position, target)
+                in_zone = distance <= config.completion_radius_m
                 in_zone_s = in_zone_s + dt if in_zone else 0.0
                 action_number = completed + timed_out + 1
                 writer.writerow((
@@ -195,7 +198,7 @@ def run_simple_session(
                 gui.update_copter(tuple(copter.position), copter.angle)
                 gui.update_target(target)
                 gui.zone_color("green" if in_zone else "red")
-                gui.update_status(completed + timed_out, reset_count, elapsed_s)
+                gui.update_status(completed, timed_out, reset_count, elapsed_s)
                 if in_zone_s >= config.hold_time_s:
                     completed += 1
                     target = _new_target(config, target)
