@@ -154,6 +154,7 @@ class SCoPE_GUI:
         counter_font = ("Segoe UI", 12 if self.embedded else 14)
         prompt_font = ("Segoe UI", 24 if self.embedded else 30, "bold")
 
+        self.ribbon_bg = self.scene.create_rectangle(0, 0, 1, 1, fill="#061321", stipple="gray50", outline="#536b80", width=1)
         self.title_item = self.scene.create_text(
             28, 24, text="SCoPE  ·  STEP RESPONSE",
             fill=self.label_color, font=("Segoe UI", 16 if self.embedded else 20, "bold"),
@@ -211,13 +212,18 @@ class SCoPE_GUI:
             w = self.SCoPE_mainwindow.winfo_width()
             h = self.SCoPE_mainwindow.winfo_height()
 
-            self.scene.coords(self.left_gimbal_window, w * 0.30, h * 0.52)
-            self.scene.coords(self.right_gimbal_window, w * 0.70, h * 0.52)
+            ribbon_top = h - (96 if not self.embedded else 68)
+            self.scene.coords(self.ribbon_bg, 0, ribbon_top, w, h)
+            self.scene.coords(self.left_gimbal_window, w * 0.30, h * 0.45)
+            self.scene.coords(self.right_gimbal_window, w * 0.70, h * 0.45)
 
             self.scene.coords(self.title_item, 28, 24)
-            self.scene.coords(self.action_item, 28, 60)
-            self.scene.coords(self.counter_item, 28, 89)
-            self.scene.coords(self.prompt_item, w * 0.5, h * 0.50)
+            self.scene.coords(self.action_item, 28, ribbon_top + 12)
+            self.scene.coords(self.counter_item, max(28, w - 240), ribbon_top + 12)
+            self.scene.coords(self.prompt_item, w * 0.5, ribbon_top + 58)
+            self.scene.tag_raise(self.ribbon_bg)
+            for item in (self.action_item, self.counter_item, self.prompt_item):
+                self.scene.tag_raise(item)
 
             self.scene.itemconfigure(self.prompt_item, state="normal" if self.prompt_visible else "hidden")
         except Exception:
