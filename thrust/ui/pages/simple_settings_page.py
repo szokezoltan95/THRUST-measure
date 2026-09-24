@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QLabel,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -38,7 +39,6 @@ class SimpleSettingsPage(QWidget):
         self.hold_s = self._spin(0.1, 30, 1.0, 2, 0.1)
         self.countdown_s = self._spin(0, 60, 3)
         self.zoom = self._spin(50, 2000, 500, 1, 10)
-        self.target_radius = self._spin(10, 1000, 100, 1, 5)
         self.completion_radius = self._spin(0.01, 2.0, 0.1, 2, 0.01)
         self.x_limit = self._spin(0.1, 20, 1.5, 2, 0.1)
         self.y_limit = self._spin(0.1, 20, 2.0, 2, 0.1)
@@ -63,6 +63,7 @@ class SimpleSettingsPage(QWidget):
         task_form.addRow("Hold in target [s]:", self.hold_s)
         task_form.addRow("Countdown [s]:", self.countdown_s)
         task_form.addRow("Target acceptance radius [m]:", self.completion_radius)
+        task_form.addRow(QLabel("Displayed target ring matches this radius exactly."))
         task_layout.addWidget(task_group)
         task_layout.addStretch()
         self.tabs.addTab(task, "Task")
@@ -72,7 +73,6 @@ class SimpleSettingsPage(QWidget):
         world_group = QGroupBox("2D world and dynamics")
         world_form = QFormLayout(world_group)
         world_form.addRow("Zoom [px/m]:", self.zoom)
-        world_form.addRow("Target zone radius [px]:", self.target_radius)
         world_form.addRow("Horizontal target limit [m]:", self.x_limit)
         world_form.addRow("Maximum target height [m]:", self.y_limit)
         world_form.addRow("World width [px]:", self.field_width)
@@ -90,7 +90,6 @@ class SimpleSettingsPage(QWidget):
         self.hold_s.setValue(config.hold_time_s)
         self.countdown_s.setValue(config.countdown_s)
         self.zoom.setValue(config.zoom_px_per_m)
-        self.target_radius.setValue(config.target_zone_radius_px)
         self.completion_radius.setValue(config.completion_radius_m)
         self.x_limit.setValue(config.target_x_limit_m)
         self.y_limit.setValue(config.target_y_max_m)
@@ -107,7 +106,6 @@ class SimpleSettingsPage(QWidget):
             hold_time_s=self.hold_s.value(),
             countdown_s=self.countdown_s.value(),
             zoom_px_per_m=self.zoom.value(),
-            target_zone_radius_px=self.target_radius.value(),
             completion_radius_m=self.completion_radius.value(),
             target_x_limit_m=self.x_limit.value(),
             target_y_max_m=self.y_limit.value(),
