@@ -5,12 +5,15 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from http.cookiejar import CookieJar
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+
+from thrust.paths import APP_DATA_DIR
 
 
 class WebDbError(RuntimeError):
@@ -58,6 +61,43 @@ class WebDbClient:
         if not isinstance(manifest.get("test"), dict):
             raise WebDbError("The test manifest is missing its test definition.")
         return manifest
+
+    def download_background(self, asset_id: str) -> Path:
+        """Cache an immutable WebDB background in the local THRUST data directory."""
+        if not re.fullmatch(r"[0-9a-f]{32}", asset_id):
+            raise WebDbError("Invalid SimPLE background ID.")
+        cache = APP_DATA_DIR / "backgrounds"
+        cache.mkdir(parents=True, exist_ok=True)
+        for suffix in (".png", ".jpg"):
+            existing = cache / f"{asset_id}{suffix}"
+            if existing.is_file():
+                return existing
+        request = Request(
+            urljoin(self.base_url, f"api/backgrounds/{asset_id}"),
+            headers={"Accept": "image/png, image/jpeg"},
+        )
+        try:
+            with self._opener.open(request, timeout=self.timeout) as response:
+                content_type = response.headers.get_content_type()
+                content = response.read(5_000_001)
+        except (HTTPError, URLError, TimeoutError) as exc:
+            raise WebDbError(f"Could not download SimPLE background: {exc}") from exc
+        if len(content) > 5_000_000:
+            raise WebDbError("SimPLE background exceeds the 5 MB limit.")
+        if content_type == "image/png" and content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+            suffix = ".png"
+        elif content_type == "image/jpeg" and content.startswith(b"\\xff\\xd8\\xff"):
+            suffix = ".jpg"
+        else:
+            raise WebDbError("WebDB returned an unsupported background image.")
+        destination = cache / f"{asset_id}{suffix}"
+        temporary = cache / f"{asset_id}.tmp"
+        try:
+            temporary.write_bytes(content)
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return destination
 
     def upload_measurement(
         self,
