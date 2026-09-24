@@ -12,6 +12,7 @@ from typing import Any
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -145,9 +146,26 @@ class MainWindow(QMainWindow):
         self.connection_status.setStyleSheet("font-weight: 700; color: #ed6262;")
 
         self.program_selector = QComboBox()
-        self.program_selector.setObjectName("measurementMode")
-        self.program_selector.addItem("SCoPE · Step response", "SCOPE")
-        self.program_selector.addItem("SimPLE · 2D flight", "SIMPLE")
+        self.program_selector.addItem("SCoPE", "SCOPE")
+        self.program_selector.addItem("SimPLE", "SIMPLE")
+        self.program_selector.setVisible(False)
+        self.mode_logos: dict[str, QPixmap] = {}
+        self.mode_button_group = QButtonGroup(self)
+        self.mode_button_group.setExclusive(True)
+        mode_switch = QWidget()
+        mode_switch_layout = QHBoxLayout(mode_switch)
+        mode_switch_layout.setContentsMargins(0, 0, 0, 0)
+        mode_switch_layout.setSpacing(5)
+        self.mode_buttons: dict[str, QPushButton] = {}
+        for label, mode in (("SCoPE", "SCOPE"), ("SimPLE", "SIMPLE")):
+            button = QPushButton(label)
+            button.setCheckable(True)
+            button.setObjectName("modeSwitchOption")
+            button.setMinimumHeight(36)
+            self.mode_button_group.addButton(button)
+            self.mode_buttons[mode] = button
+            button.clicked.connect(lambda _checked=False, index=0 if mode == "SCOPE" else 1: self.program_selector.setCurrentIndex(index))
+            mode_switch_layout.addWidget(button, 1)
 
         self.participant_combo = QComboBox()
         self.participant_combo.setEditable(True)
@@ -162,11 +180,19 @@ class MainWindow(QMainWindow):
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
         self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
 
-        selection_group = QGroupBox("Test selection")
-        selection_form = QFormLayout(selection_group)
-        selection_form.addRow("Measurement mode:", self.program_selector)
+        selection_group = QGroupBox("Measurement session")
+        selection_group_layout = QVBoxLayout(selection_group)
+        selection_group_layout.addWidget(mode_switch)
+        selection_form = QFormLayout()
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
+        selection_group_layout.addLayout(selection_form)
+
+        self.mode_preview = QLabel("SCoPE")
+        self.mode_preview.setObjectName("modePreview")
+        self.mode_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mode_preview.setFixedHeight(96)
+        self.mode_preview.setToolTip("Vybraný merací program")
 
         joystick_group = QGroupBox("Joystick link")
         joystick_layout = QVBoxLayout(joystick_group)
@@ -227,15 +253,10 @@ class MainWindow(QMainWindow):
         title_block.addWidget(subtitle)
         title_row.addLayout(title_block)
         title_row.addStretch()
-        self.mode_logos: dict[str, QLabel] = {}
         for filename, label in (("scope_logo.png", "SCOPE"), ("simple_logo.png", "SIMPLE")):
             logo_path = ASSETS_DIR / filename
             if logo_path.is_file():
-                logo = QLabel()
-                logo.setToolTip(label)
-                logo.setPixmap(QPixmap(str(logo_path)).scaled(124, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                title_row.addWidget(logo)
-                self.mode_logos[label] = logo
+                self.mode_logos[label] = QPixmap(str(logo_path))
 
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
@@ -254,6 +275,7 @@ class MainWindow(QMainWindow):
         left = QVBoxLayout()
         left.setSpacing(10)
         left.addWidget(selection_group)
+        left.addWidget(self.mode_preview)
         left.addWidget(self.run_button)
         right = QVBoxLayout()
         right.setSpacing(10)
@@ -282,7 +304,9 @@ class MainWindow(QMainWindow):
             QPushButton { background: #203542; border: 1px solid #4c7180; border-radius: 5px; padding: 7px 12px; }
             QPushButton:hover { background: #2a4d5d; }
             QComboBox, QLineEdit { background: #19242d; border: 1px solid #405563; border-radius: 4px; padding: 5px; }
-            QComboBox#measurementMode { background: #143c4c; border: 2px solid #44b5ce; color: #ffffff; font-size: 15px; font-weight: 700; padding: 8px 12px; }
+            QPushButton#modeSwitchOption { background: #17232d; border: 1px solid #405563; color: #9db1bf; font-size: 14px; font-weight: 700; padding: 7px 16px; }
+            QPushButton#modeSwitchOption:checked { background: #123e52; border: 1px solid #44b5ce; color: #f0fbff; }
+            QLabel#modePreview { background: #0b1218; border: 1px solid #344553; border-radius: 8px; color: #8fc7d8; font-size: 19px; font-weight: 700; }
             QProgressBar#miniAxis { background: #1a2730; border: 1px solid #3b5661; border-radius: 3px; }
             QProgressBar#miniAxis::chunk { background: #4da6bd; border-radius: 2px; }
             QLabel#joystickLed { font-weight: 700; color: #e05252; }
@@ -486,8 +510,15 @@ class MainWindow(QMainWindow):
         self.test_combo.setPlaceholderText("No available versions for this mode")
         self.test_combo.setEnabled(bool(matching))
         self.test_combo.blockSignals(False)
-        for program, logo in self.mode_logos.items():
-            logo.setVisible(program == mode)
+        for button_mode, button in self.mode_buttons.items():
+            button.setChecked(button_mode == mode)
+        logo = self.mode_logos.get(mode)
+        if logo is not None and not logo.isNull():
+            self.mode_preview.setPixmap(logo.scaled(260, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.mode_preview.setText("")
+        else:
+            self.mode_preview.setPixmap(QPixmap())
+            self.mode_preview.setText("SCoPE" if mode == "SCOPE" else "SimPLE")
         self.current_manifest = None
         if matching:
             self._load_selected_test()
