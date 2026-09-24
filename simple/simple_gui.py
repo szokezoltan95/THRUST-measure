@@ -65,10 +65,10 @@ class SimpleGUI:
         if not hasattr(self, "_source_image"):
             return
         try:
-            from PIL import Image, ImageTk
+            from PIL import Image, ImageOps, ImageTk
             width = max(1, self.canvas.winfo_width())
             height = max(1, self.canvas.winfo_height())
-            image = self._source_image.resize((width, height), Image.Resampling.LANCZOS)
+            image = ImageOps.fit(self._source_image, (width, height), method=Image.Resampling.LANCZOS)
             self._photo = ImageTk.PhotoImage(image)
             if self.bg_id is None:
                 self.bg_id = self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
@@ -82,9 +82,20 @@ class SimpleGUI:
     def _origin(self) -> tuple[float, float, float]:
         width = max(1, self.canvas.winfo_width())
         height = max(1, self.canvas.winfo_height())
-        scale = min(width / self.config.field_width_px, height / self.config.field_height_px)
         origin_x = width / 2
         ground_y = height - max(70, height * 0.08)
+        margin_m = self.config.completion_radius_m + 0.05
+        horizontal_limit = max(1, width / 2 - 40) / (
+            self.config.zoom_px_per_m * (self.config.target_x_limit_m + margin_m)
+        )
+        vertical_limit = max(1, ground_y - max(95, height * 0.12)) / (
+            self.config.zoom_px_per_m * (self.config.target_y_max_m + margin_m)
+        )
+        scale = min(
+            width / self.config.field_width_px,
+            height / self.config.field_height_px,
+            horizontal_limit, vertical_limit,
+        )
         return origin_x, ground_y, scale
 
     def _screen(self, x_m: float, y_m: float) -> tuple[float, float]:
