@@ -150,23 +150,28 @@ class SCoPE_GUI:
         self.left_gimbal_window = self.scene.create_window(0, 0, window=self.left_gimbal, anchor="center")
         self.right_gimbal_window = self.scene.create_window(0, 0, window=self.right_gimbal, anchor="center")
 
-        action_font = ("Arial", 16 if self.embedded else 28)
-        counter_font = ("Arial", 16 if self.embedded else 28)
-        prompt_font = ("Arial", 24 if self.embedded else 72)
+        action_font = ("Segoe UI", 14 if self.embedded else 16, "bold")
+        counter_font = ("Segoe UI", 12 if self.embedded else 14)
+        prompt_font = ("Segoe UI", 24 if self.embedded else 30, "bold")
 
+        self.title_item = self.scene.create_text(
+            28, 24, text="SCoPE  ·  STEP RESPONSE",
+            fill=self.label_color, font=("Segoe UI", 16 if self.embedded else 20, "bold"),
+            anchor="nw",
+        )
         self.action_item = self.scene.create_text(
             0, 0,
             text=self.action_text,
             fill=self.label_color,
             font=action_font,
-            anchor="center",
+            anchor="nw",
         )
         self.counter_item = self.scene.create_text(
             0, 0,
             text=self.counter_text,
             fill=self.label_color,
             font=counter_font,
-            anchor="center",
+            anchor="nw",
         )
         self.prompt_item = self.scene.create_text(
             0, 0,
@@ -209,8 +214,9 @@ class SCoPE_GUI:
             self.scene.coords(self.left_gimbal_window, w * 0.30, h * 0.52)
             self.scene.coords(self.right_gimbal_window, w * 0.70, h * 0.52)
 
-            self.scene.coords(self.action_item, w * 0.5, h * 0.08)
-            self.scene.coords(self.counter_item, w * 0.5, h * 0.92)
+            self.scene.coords(self.title_item, 28, 24)
+            self.scene.coords(self.action_item, 28, 60)
+            self.scene.coords(self.counter_item, 28, 89)
             self.scene.coords(self.prompt_item, w * 0.5, h * 0.50)
 
             self.scene.itemconfigure(self.prompt_item, state="normal" if self.prompt_visible else "hidden")
@@ -268,6 +274,7 @@ class SCoPE_GUI:
 
         self.SCoPE_mainwindow.configure(background=self.screen_background)
         self.scene.configure(bg=self.screen_background)
+        self.scene.itemconfigure(self.title_item, fill=self.label_color)
         self.scene.itemconfigure(self.action_item, fill=self.label_color)
         self.scene.itemconfigure(self.counter_item, fill=self.label_color)
         self.scene.itemconfigure(self.prompt_item, fill=self.prompt_color)
