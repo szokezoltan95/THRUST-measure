@@ -51,8 +51,9 @@ class SimpleGUI:
         self.update_status(0, 0, 0, 0.0)
         self._place_prompt()
         # Keep the aircraft visible during arming and the countdown.
-        self.update_copter((0.0, 0.0), 0.0)
         self.root.update()
+        self.update_copter((0.0, 0.0), 0.0)
+        self.root.update_idletasks()
 
     def _load_background(self) -> None:
         source = self.background_path
