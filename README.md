@@ -112,13 +112,29 @@ Profiles allow reproducible experiments and easy switching between setups.
 
 ---
 
-## Running the Project
+## Install and run
 
-From the project root:
+THRUST is installable into a Python virtual environment. Install it once from the repository root:
 
-python main.py
+```bat
+py -m venv venv
+venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+python -m pip install -e ".[gui]"
+```
 
-This will start the THRUST launcher.
+After installation, start the measurement client with:
+
+```bat
+thrust
+```
+
+The `thrust` command is available whenever this virtual environment is active, regardless of the current working directory. In a new Command Prompt, activate it using the full path to `venv\Scripts\activate.bat`, then run `thrust`.
+
+The editable install keeps the launcher connected to the checked-out source tree, so code updates do not require reinstalling the package. Re-run `python -m pip install -e ".[gui]"` after pulling changes that modify dependencies.
+
+For compatibility, `python main.py` and `run_thrust.bat` remain available.
+
 
 
 ---
