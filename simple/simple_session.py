@@ -171,17 +171,21 @@ def run_simple_session(
             gui.set_prompt("")
             last_tick = pygame.time.get_ticks()
             while gui.pump() and not _active(_axis_value(controller, break_axis)):
-                dt = clock.tick(config.sampling_hz) / 1000.0
+                dt = clock.tick(100) / 1000.0
                 now_ms = pygame.time.get_ticks()
                 elapsed_s = (now_ms - started_clock) / 1000.0
                 pygame.event.pump()
                 roll = _axis_value(controller, roll_axis)
                 throttle = (_axis_value(controller, throttle_axis) + 1.0) / 2.0
-                copter.update(dt, throttle, roll * math.radians(90))
                 reset_active = _active(_axis_value(controller, reset_axis))
-                if reset_active and not was_reset:
+                if reset_active:
+                    # Holding reset locks the aircraft at the origin until the switch
+                    # returns to its released (-1) position.
                     copter.reset()
-                    reset_count += 1
+                    if not was_reset:
+                        reset_count += 1
+                else:
+                    copter.update(dt, throttle, roll * math.radians(90))
                 was_reset = reset_active
                 distance = math.dist(copter.position, target)
                 in_zone = distance <= config.completion_radius_m
