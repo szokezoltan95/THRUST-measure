@@ -103,7 +103,7 @@ class SimpleGUI:
         return origin_x + x_m * self.config.zoom_px_per_m * scale, ground_y - y_m * self.config.zoom_px_per_m * scale
 
     def _place_prompt(self) -> None:
-        self.canvas.coords(self.prompt_id, self.canvas.winfo_width() / 2, self.canvas.winfo_height() * 0.82)
+        self.canvas.coords(self.prompt_id, self.canvas.winfo_width() / 2, self.canvas.winfo_height() * 0.50)
 
     def update_target(self, target: tuple[float, float]) -> None:
         x, y = self._screen(*target)
