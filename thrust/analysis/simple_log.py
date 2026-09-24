@@ -128,7 +128,7 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
     return {
         "schema_version": "simple-analysis-v1",
         "analysis_type": "SIMPLE_2D_FLIGHT",
-        "algorithm_version": "1.0.0",
+        "algorithm_version": "1.0.1",
         "source_format": "SIMPLE_TSV_V1",
         "source_file": source.name,
         "started_at": started_at or datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat(),
