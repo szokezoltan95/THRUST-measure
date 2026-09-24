@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import re
 from typing import Any
 
 
@@ -13,7 +14,7 @@ class SimpleConfig:
     hold_time_s: float = 1.0
     countdown_s: int = 3
     zoom_px_per_m: float = 500.0
-    target_zone_radius_px: float = 100.0
+    background_image_id: str | None = None
     completion_radius_m: float = 0.1
     target_x_limit_m: float = 1.5
     target_y_max_m: float = 2.0
@@ -30,8 +31,10 @@ class SimpleConfig:
             raise ValueError("Action timeout and hold time must be positive.")
         if not 0 <= self.countdown_s <= 60:
             raise ValueError("Countdown must be between 0 and 60 seconds.")
-        if self.zoom_px_per_m <= 0 or self.target_zone_radius_px <= 0:
-            raise ValueError("Zoom and target zone radius must be positive.")
+        if self.zoom_px_per_m <= 0:
+            raise ValueError("Zoom must be positive.")
+        if self.background_image_id and not re.fullmatch(r"[0-9a-f]{32}", self.background_image_id):
+            raise ValueError("The SimPLE background ID is invalid.")
         if self.completion_radius_m <= 0:
             raise ValueError("Completion radius must be positive.")
         if self.target_x_limit_m <= 0 or self.target_y_max_m <= 0:
