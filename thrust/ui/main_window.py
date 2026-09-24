@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):
 
         self.client: WebDbClient | None = None
         self.current_manifest: dict[str, Any] | None = None
+        self.available_tests: list[dict[str, Any]] = []
         self.offline_mode = True
 
         self.common_page = CommonSettingsPage()
@@ -142,6 +143,11 @@ class MainWindow(QMainWindow):
         self.connection_status = QLabel("● WebDB DISCONNECTED · Offline mode")
         self.connection_status.setStyleSheet("font-weight: 700; color: #ed6262;")
 
+        self.program_selector = QComboBox()
+        self.program_selector.setObjectName("measurementMode")
+        self.program_selector.addItem("SCoPE · Step response", "SCOPE")
+        self.program_selector.addItem("SimPLE · 2D flight", "SIMPLE")
+
         self.participant_combo = QComboBox()
         self.participant_combo.setEditable(True)
         self.participant_combo.setPlaceholderText("Participant ID")
@@ -151,9 +157,11 @@ class MainWindow(QMainWindow):
         self.test_combo.setPlaceholderText("Connect to load test versions")
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
+        self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
 
         selection_group = QGroupBox("Test selection")
         selection_form = QFormLayout(selection_group)
+        selection_form.addRow("Measurement mode:", self.program_selector)
         selection_form.addRow("Participant ID:", self.participant_combo)
         selection_form.addRow("Test version:", self.test_combo)
 
@@ -216,13 +224,15 @@ class MainWindow(QMainWindow):
         title_block.addWidget(subtitle)
         title_row.addLayout(title_block)
         title_row.addStretch()
-        for filename, label in (("scope_logo.png", "SCoPE"), ("simple_logo.png", "SimPLE")):
+        self.mode_logos: dict[str, QLabel] = {}
+        for filename, label in (("scope_logo.png", "SCOPE"), ("simple_logo.png", "SIMPLE")):
             logo_path = ASSETS_DIR / filename
             if logo_path.is_file():
                 logo = QLabel()
                 logo.setToolTip(label)
                 logo.setPixmap(QPixmap(str(logo_path)).scaled(124, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
                 title_row.addWidget(logo)
+                self.mode_logos[label] = logo
 
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
@@ -269,6 +279,7 @@ class MainWindow(QMainWindow):
             QPushButton { background: #203542; border: 1px solid #4c7180; border-radius: 5px; padding: 7px 12px; }
             QPushButton:hover { background: #2a4d5d; }
             QComboBox, QLineEdit { background: #19242d; border: 1px solid #405563; border-radius: 4px; padding: 5px; }
+            QComboBox#measurementMode { background: #143c4c; border: 2px solid #44b5ce; color: #ffffff; font-size: 15px; font-weight: 700; padding: 8px 12px; }
             QProgressBar#miniAxis { background: #1a2730; border: 1px solid #3b5661; border-radius: 3px; }
             QProgressBar#miniAxis::chunk { background: #4da6bd; border-radius: 2px; }
             QLabel#joystickLed { font-weight: 700; color: #e05252; }
@@ -308,7 +319,7 @@ class MainWindow(QMainWindow):
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
-        self.run_button.setEnabled(bool(connected))
+        self.run_button.setEnabled(bool(connected and self.current_manifest and self.test_combo.currentIndex() >= 0))
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
@@ -375,14 +386,10 @@ class MainWindow(QMainWindow):
                 self.participant_combo.setEditable(True)
                 self.participant_combo.setEnabled(bool(participants))
 
-            self.test_combo.clear()
-            for test in tests:
-                if test.get("is_active", False):
-                    self.test_combo.addItem(f'{test["name"]} · v{test["version"]}', test)
-
+            self.available_tests = [test for test in tests if test.get("is_active", False)]
             self.offline_mode = False
             self.config_source_combo.setCurrentIndex(0)
-            self.test_combo.setEnabled(bool(tests))
+            self._refresh_test_choices()
             identity = account.get("participant_code") if role == "student" else account.get("username", "")
             self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
             self.connection_status.setStyleSheet("font-weight: 700; color: #52d18a;")
@@ -418,7 +425,7 @@ class MainWindow(QMainWindow):
     def _activate_offline_mode(self, show_dialog: bool, error: str = "") -> None:
         self.offline_mode = True
         self.client = None
-        self.current_manifest = self._offline_manifest()
+        self.current_manifest = None
         self.config_source_combo.setCurrentIndex(1)
 
         self.participant_combo.clear()
@@ -426,16 +433,11 @@ class MainWindow(QMainWindow):
         self.participant_combo.setCurrentText("LOCAL")
         self.participant_combo.setEnabled(True)
 
-        self.test_combo.blockSignals(True)
-        self.test_combo.clear()
-        scope_test = self._offline_manifest("SCOPE")["test"]
-        simple_test = self._offline_manifest("SIMPLE")["test"]
-        self.test_combo.addItem("SCoPE · local offline", scope_test)
-        self.test_combo.addItem("SimPLE · local offline", simple_test)
-        self.test_combo.setCurrentIndex(0)
-        self.test_combo.blockSignals(False)
-        self.test_combo.setEnabled(True)
-        self._load_selected_test(0)
+        self.available_tests = [
+            self._offline_manifest("SCOPE")["test"],
+            self._offline_manifest("SIMPLE")["test"],
+        ]
+        self._refresh_test_choices()
 
         self.connection_status.setText("● WebDB DISCONNECTED · Offline mode")
         self.connection_status.setStyleSheet("color: #d6a35b;")
@@ -452,6 +454,35 @@ class MainWindow(QMainWindow):
                 f"THRUST switched to offline mode automatically.\n\n{error}",
             )
             self._open_advanced()
+
+    def _refresh_test_choices(self, _index: int = -1) -> None:
+        mode = str(self.program_selector.currentData() or "SCOPE")
+        previous = self.test_combo.currentData()
+        previous_id = previous.get("id") if isinstance(previous, dict) else None
+        matching = [
+            test for test in self.available_tests
+            if str(test.get("analysis_profile", "")).upper().startswith(mode)
+        ]
+        self.test_combo.blockSignals(True)
+        self.test_combo.clear()
+        for test in matching:
+            self.test_combo.addItem(f'{test["name"]} · v{test["version"]}', test)
+        saved_index = next(
+            (i for i, test in enumerate(matching) if test.get("id") == previous_id),
+            0,
+        )
+        self.test_combo.setCurrentIndex(saved_index if matching else -1)
+        self.test_combo.setPlaceholderText("No available versions for this mode")
+        self.test_combo.setEnabled(bool(matching))
+        self.test_combo.blockSignals(False)
+        for program, logo in self.mode_logos.items():
+            logo.setVisible(program == mode)
+        self.current_manifest = None
+        if matching:
+            self._load_selected_test()
+        else:
+            self.append_log(f"No active {mode} test version is available.")
+            self._update_run_availability()
 
     def _load_selected_test(self, _index: int = -1) -> None:
         if self.test_combo.currentIndex() < 0:
@@ -587,6 +618,13 @@ class MainWindow(QMainWindow):
                     if self.offline_mode
                     else self._simple_configuration_from_web_test(test)
                 )
+                if config.background_image_id:
+                    if self.client is None:
+                        raise RuntimeError("The selected WebDB background requires a connection.")
+                    runtime["background_image_path"] = str(
+                        self.client.download_background(config.background_image_id)
+                    )
+                    self.append_log(f"Loaded SimPLE background {config.background_image_id}.")
                 self.append_log(f"Starting SimPLE {test['test_code']} v{test['version']} for participant {participant_code}.")
                 session = run_simple(
                     config, runtime, participant=participant_code, profile_name=profile_name,
