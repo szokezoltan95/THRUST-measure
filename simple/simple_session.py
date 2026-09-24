@@ -15,6 +15,7 @@ import pygame
 from simple.simple_config import SimpleConfig
 from simple.simple_gui import SimpleGUI
 from thrust.paths import SIMPLE_OUTPUT_DIR
+from thrust.raw_compression import compress_raw_log
 
 
 @dataclass
@@ -224,6 +225,9 @@ def run_simple_session(
         finally:
             pygame.joystick.quit()
             pygame.quit()
+    logfile_path = compress_raw_log(logfile_path)
+    if log_callback:
+        log_callback(f"Compressed SimPLE raw log: {logfile_path}")
     duration = max(0.0, time.monotonic() - started_monotonic)
     if log_callback:
         log_callback(f"SimPLE finished: completed={completed}, timed out={timed_out}, resets={reset_count}.")

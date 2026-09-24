@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from thrust.paths import APP_DATA_DIR
+from thrust.raw_compression import compress_raw_log
 
 
 class WebDbError(RuntimeError):
@@ -109,7 +110,7 @@ class WebDbClient:
         analysis_data: dict[str, Any] | None = None,
         status: str = "recorded",
     ) -> dict[str, Any]:
-        path = Path(raw_log_path)
+        path = compress_raw_log(Path(raw_log_path))
         raw_bytes = path.read_bytes()
         return self._request_json(
             "/api/student/measurements" if self.role == "student" else "/api/admin/measurements",
@@ -120,7 +121,7 @@ class WebDbClient:
                 "started_at": started_at,
                 "status": status,
                 "source_file_name": path.name,
-                "raw_content_type": "text/tab-separated-values",
+                "raw_content_type": "application/gzip",
                 "raw_log_base64": base64.b64encode(raw_bytes).decode("ascii"),
                 "analysis_data": analysis_data,
             },

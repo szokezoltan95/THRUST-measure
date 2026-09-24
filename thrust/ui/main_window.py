@@ -692,19 +692,20 @@ class MainWindow(QMainWindow):
                     raise RuntimeError("SimPLE did not create a raw log.")
                 analysis = analyze_simple_log(raw_path, started_at=session.started_at)
                 base_dir = Path(raw_path).parent.parent
+                raw_stem = Path(raw_path).name.removesuffix(".gz").removesuffix(".tsv")
                 if runtime.get("save_step_file", True):
-                    step_path = base_dir / "steps" / (Path(raw_path).stem + "_step.tsv")
+                    step_path = base_dir / "steps" / (raw_stem + "_step.tsv")
                     analysis.setdefault("artifacts", {})["step_response"] = Path(
                         write_step_response(step_path, analysis)
                     ).name
                 if runtime.get("save_graph_pdf", True):
-                    graph_path = base_dir / "graphs" / (Path(raw_path).stem + "_response.pdf")
+                    graph_path = base_dir / "graphs" / (raw_stem + "_response.pdf")
                     analysis.setdefault("artifacts", {})["step_response_graph"] = Path(
                         save_step_graph(graph_path, analysis)
                     ).name
                     if runtime.get("auto_open_graph", False):
                         self._open_local_file(graph_path)
-                analysis_path = base_dir / "analysis" / (Path(raw_path).stem + "_analysis.json")
+                analysis_path = base_dir / "analysis" / (raw_stem + "_analysis.json")
                 analysis_path.parent.mkdir(parents=True, exist_ok=True)
                 analysis.setdefault("artifacts", {})["analysis_json"] = analysis_path.name
                 analysis_path.write_text(json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")

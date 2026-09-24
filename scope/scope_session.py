@@ -20,6 +20,7 @@ import pygame
 
 from scope.SCoPE_GUI import SCoPE_GUI
 from scope.scope_config import ScopeConfig
+from thrust.raw_compression import compress_raw_log
 
 
 @dataclass
@@ -233,7 +234,7 @@ def build_output_paths(config: ScopeConfig):
     safe_user = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in config.user.strip())
     profile = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in config.profile_name.strip()) or "default"
 
-    logfile_path = logs_dir / f"SCoPE_log_{safe_user}_{config.difficulty}_{profile}_{file_datetime}.txt"
+    logfile_path = logs_dir / f"SCoPE_log_{safe_user}_{config.difficulty}_{profile}_{file_datetime}.tsv"
     evlfile_path = actions_dir / f"SCoPE_actions_{safe_user}_{config.difficulty}_{profile}_{file_datetime}.txt"
     step_path = steps_dir / f"SCoPE_step_{safe_user}_{config.difficulty}_{profile}_{file_datetime}.txt"
     graph_path = graphs_dir / f"SCoPE_graph_{safe_user}_{config.difficulty}_{profile}_{file_datetime}.pdf"
@@ -809,6 +810,10 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
         if evlfile is not None:
             evlfile.close()
             evlfile = None
+
+        if config.save_raw_log and logfile_path.is_file():
+            logfile_path = compress_raw_log(logfile_path)
+            emit_log(config, log_callback, f"Compressed SCoPE raw log: {logfile_path}")
 
         try:
             if gui.SCoPE_mainwindow.winfo_exists():

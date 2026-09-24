@@ -7,6 +7,7 @@ exported for the WebDB.
 from __future__ import annotations
 
 import csv
+import gzip
 import math
 from pathlib import Path
 from statistics import median
@@ -197,7 +198,8 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     if not source.is_file():
         raise ScopeLogError(f"SCoPE log does not exist: {source}")
-    with source.open("r", encoding="utf-8", newline="") as handle:
+    opener = gzip.open if source.suffix == ".gz" else open
+    with opener(source, "rt", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         columns = set(reader.fieldnames or [])
         missing = REQUIRED_COLUMNS - columns

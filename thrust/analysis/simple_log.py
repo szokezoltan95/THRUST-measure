@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import math
 import statistics
 from datetime import datetime, timezone
@@ -69,7 +70,8 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
     if not source.is_file():
         raise SimpleLogError(f"SimPLE log does not exist: {source}")
     rows: list[dict[str, float]] = []
-    with source.open("r", encoding="utf-8-sig", newline="") as handle:
+    opener = gzip.open if source.suffix == ".gz" else open
+    with opener(source, "rt", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         missing = REQUIRED_COLUMNS - set(reader.fieldnames or [])
         if missing:
