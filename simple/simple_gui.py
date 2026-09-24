@@ -31,7 +31,7 @@ class SimpleGUI:
             fill="#ffffff", font=("Segoe UI", 20, "bold"),
         )
         self.target_id = self.canvas.create_oval(0, 0, 0, 0, fill="", outline="#ff0000", width=4)
-        self.copter_id = self.canvas.create_oval(0, 0, 0, 0, fill="#ffffff", outline="#1e2cff", width=3)
+        self.copter_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#1e2cff", width=1)
         self.center_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#ffffff", width=1)
         self.direction_id = self.canvas.create_line(0, 0, 0, 0, fill="#ffffff", width=5, arrow=tk.LAST)
         self.status_id = self.canvas.create_text(
@@ -115,6 +115,7 @@ class SimpleGUI:
         radius = max(9, self._origin()[2] * 25)
         self.canvas.coords(self.copter_id, x - radius, y - radius, x + radius, y + radius)
         self.canvas.coords(self.center_id, x - 3, y - 3, x + 3, y + 3)
+        self.canvas.itemconfigure(self.center_id, fill="#1e2cff", outline="#1e2cff")
         self.canvas.coords(
             self.direction_id, x, y,
             x + radius * 2.2 * math.sin(angle_rad),
