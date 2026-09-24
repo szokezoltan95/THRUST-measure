@@ -124,10 +124,16 @@ class SimpleSettingsPage(QWidget):
         self.x_limit.setValue(config.target_x_limit_m)
         self.y_limit.setValue(config.target_y_max_m)
         self.world_width.setValue(config.world_width_m)
+        selected = None
         for index in range(self.resolution.count()):
             if self.resolution.itemData(index) == (config.field_width_px, config.field_height_px):
-                self.resolution.setCurrentIndex(index)
+                selected = index
                 break
+        if selected is None:
+            size = (config.field_width_px, config.field_height_px)
+            self.resolution.addItem(f"{size[0]} × {size[1]} · aktuálne", size)
+            selected = self.resolution.count() - 1
+        self.resolution.setCurrentIndex(selected)
         self.mass.setValue(config.mass_kg)
         self.max_thrust.setValue(config.max_thrust_n)
         self.drag.setValue(config.drag_coefficient)
