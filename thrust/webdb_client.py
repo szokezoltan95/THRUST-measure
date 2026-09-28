@@ -17,6 +17,9 @@ from thrust.paths import APP_DATA_DIR
 from thrust.raw_compression import compress_raw_log
 
 
+DEFAULT_WEBDB_URL = "https://thrust.lf.tuke.sk"
+
+
 class WebDbError(RuntimeError):
     """Raised when the web database cannot fulfil a client request."""
 
@@ -32,7 +35,7 @@ class WebDbClient:
 
     @classmethod
     def from_environment(cls) -> "WebDbClient":
-        return cls(os.environ.get("THRUST_WEBDB_URL", "http://localhost:8080"))
+        return cls(os.environ.get("THRUST_WEBDB_URL", DEFAULT_WEBDB_URL))
 
     def login(self, username: str, password: str) -> dict[str, Any]:
         payload = self._request_json(
