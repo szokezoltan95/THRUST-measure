@@ -41,10 +41,7 @@ from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
-from thrust.webdb_client import WebDbClient, WebDbError
-
-
-DEFAULT_WEBDB_URL = "http://thrust.webdb"
+from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 
 
 class LoginDialog(QDialog):
