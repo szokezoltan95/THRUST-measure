@@ -89,17 +89,17 @@ class CommonSettingsPage(QWidget):
         self.show_graph_check = QCheckBox()
         self.show_graph_check.setChecked(False)
 
-        self.aile_axis_spin = QSpinBox()
-        self.elev_axis_spin = QSpinBox()
-        self.thro_axis_spin = QSpinBox()
-        self.rudd_axis_spin = QSpinBox()
+        self.lx_axis_spin = QSpinBox()
+        self.ly_axis_spin = QSpinBox()
+        self.ry_axis_spin = QSpinBox()
+        self.rx_axis_spin = QSpinBox()
         self.deadzone_edit = QLineEdit("100,100,100,100")
         self.deadzone_edit.setMaximumWidth(180)
         for spin, value in (
-            (self.aile_axis_spin, 0),
-            (self.elev_axis_spin, 1),
-            (self.thro_axis_spin, 2),
-            (self.rudd_axis_spin, 3),
+            (self.lx_axis_spin, 0),
+            (self.ly_axis_spin, 1),
+            (self.ry_axis_spin, 2),
+            (self.rx_axis_spin, 3),
         ):
             spin.setRange(0, 16)
             spin.setValue(value)
@@ -125,10 +125,10 @@ class CommonSettingsPage(QWidget):
         joystick_layout = QVBoxLayout(joystick_tab)
         mapping_group = QGroupBox("pygame axis mapping used by measurement")
         mapping_form = QFormLayout(mapping_group)
-        mapping_form.addRow("AILE:", self.aile_axis_spin)
-        mapping_form.addRow("ELEV:", self.elev_axis_spin)
-        mapping_form.addRow("THRO:", self.thro_axis_spin)
-        mapping_form.addRow("RUDD:", self.rudd_axis_spin)
+        mapping_form.addRow("LX:", self.lx_axis_spin)
+        mapping_form.addRow("LY:", self.ly_axis_spin)
+        mapping_form.addRow("RY:", self.ry_axis_spin)
+        mapping_form.addRow("RX:", self.rx_axis_spin)
         mapping_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
         mapping_form.addRow("Break button/axis:", self.break_axis_spin)
         mapping_form.addRow("Reset button/axis:", self.reset_axis_spin)
@@ -222,10 +222,10 @@ class CommonSettingsPage(QWidget):
             "reset_axis": self.reset_axis_spin.value(),
             "deadzone": self._parse_deadzone(),
             "axis_map": {
-                "AILE": self.aile_axis_spin.value(),
-                "ELEV": self.elev_axis_spin.value(),
-                "THRO": self.thro_axis_spin.value(),
-                "RUDD": self.rudd_axis_spin.value(),
+                "LX": self.lx_axis_spin.value(),
+                "LY": self.ly_axis_spin.value(),
+                "RY": self.ry_axis_spin.value(),
+                "RX": self.rx_axis_spin.value(),
             },
             "output_root": self.output_root_edit.text().strip(),
             "use_dated_subfolders": self.use_dated_subfolders_check.isChecked(),
@@ -254,10 +254,10 @@ class CommonSettingsPage(QWidget):
         deadzone = data.get("deadzone", [100, 100, 100, 100])
         self.deadzone_edit.setText(",".join(str(value) for value in deadzone))
         axis_map = data.get("axis_map", {})
-        self.aile_axis_spin.setValue(axis_map.get("AILE", 0))
-        self.elev_axis_spin.setValue(axis_map.get("ELEV", 1))
-        self.thro_axis_spin.setValue(axis_map.get("THRO", 2))
-        self.rudd_axis_spin.setValue(axis_map.get("RUDD", 3))
+        self.lx_axis_spin.setValue(axis_map.get("LX", axis_map.get("AILE", 0)))
+        self.ly_axis_spin.setValue(axis_map.get("LY", axis_map.get("ELEV", 1)))
+        self.ry_axis_spin.setValue(axis_map.get("RY", axis_map.get("THRO", 2)))
+        self.rx_axis_spin.setValue(axis_map.get("RX", axis_map.get("RUDD", 3)))
         self.output_root_edit.setText(data.get("output_root", self.output_root_edit.text()))
         self.use_dated_subfolders_check.setChecked(data.get("use_dated_subfolders", True))
         self.save_raw_log_check.setChecked(data.get("save_raw_log", True))

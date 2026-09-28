@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
         joystick_layout.addLayout(joystick_status_row)
 
         feedback_grid = QGridLayout()
-        for row, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+        for row, name in enumerate(("LX", "LY", "RY", "RX")):
             label = QLabel(name)
             bar = QProgressBar()
             bar.setRange(-100, 100)
@@ -393,7 +393,7 @@ class MainWindow(QMainWindow):
     def _update_joystick_feedback(self, values: object) -> None:
         if not isinstance(values, list):
             return
-        for index, name in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+        for index, name in enumerate(("LX", "LY", "RY", "RX")):
             value = float(values[index]) if index < len(values) else 0.0
             self.joystick_bars[name].setValue(int(max(-1.0, min(1.0, value)) * 100))
 

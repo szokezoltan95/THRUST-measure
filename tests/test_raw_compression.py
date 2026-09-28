@@ -19,7 +19,7 @@ class RawCompressionTests(unittest.TestCase):
                 self.assertEqual(handle.read(), original)
 
     def test_gzip_input_is_left_unchanged(self):
-        original = b"TIME\tAILE\n0\t1\n"
+        original = b"TIME\tLX\n0\t1\n"
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "sample.tsv.gz"
             with gzip.open(source, "wb") as handle:

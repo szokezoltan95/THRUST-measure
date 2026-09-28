@@ -29,10 +29,10 @@ class ScopeConfig:
     reset_axis: int = 6
     axis_map: dict[str, int] = field(
         default_factory=lambda: {
-            "AILE": 0,
-            "ELEV": 1,
-            "THRO": 2,
-            "RUDD": 3,
+            "LX": 0,
+            "LY": 1,
+            "RY": 2,
+            "RX": 3,
         }
     )
 
@@ -100,9 +100,9 @@ class ScopeConfig:
         if any(v >= self.stick_max for v in self.deadzone):
             raise ValueError("Deadzone values must be smaller than stick_max")
 
-        required = {"AILE", "ELEV", "THRO", "RUDD"}
+        required = {"LX", "LY", "RY", "RX"}
         if set(self.axis_map.keys()) != required:
-            raise ValueError("axis_map must contain AILE, ELEV, THRO and RUDD")
+            raise ValueError("axis_map must contain LX, LY, RY and RX")
 
         if self.gui_gimbal_size < 150:
             raise ValueError("gui_gimbal_size must be at least 150")
@@ -127,6 +127,14 @@ class ScopeConfig:
         normalized = dict(data)
         if isinstance(normalized.get("difficulty"), str):
             normalized["difficulty"] = normalized["difficulty"].lower()
+        axis_map = normalized.get("axis_map")
+        if isinstance(axis_map, dict):
+            legacy = {"AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX"}
+            defaults = {"LX": 0, "LY": 1, "RY": 2, "RX": 3}
+            normalized["axis_map"] = {
+                name: axis_map.get(name, axis_map.get(old, defaults[name]))
+                for name, old in (("LX", "AILE"), ("LY", "ELEV"), ("RY", "THRO"), ("RX", "RUDD"))
+            }
         return cls(**normalized)
 
     def save_json(self, path: str | Path) -> None:

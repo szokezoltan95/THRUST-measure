@@ -122,8 +122,8 @@ def run_simple_session(
     controller = pygame.joystick.Joystick(joystick_index)
     controller.init()
     axis_map = runtime.get("axis_map", {})
-    roll_axis = int(axis_map.get("AILE", 0))
-    throttle_axis = int(axis_map.get("THRO", 2))
+    roll_axis = int(axis_map.get("LX", 0))
+    throttle_axis = int(axis_map.get("RY", 2))
     break_axis = int(runtime.get("break_axis", 5))
     reset_axis = int(runtime.get("reset_axis", 6))
     if max(roll_axis, throttle_axis) >= controller.get_numaxes():

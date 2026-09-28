@@ -12,10 +12,10 @@ class ScopeStepResponseTests(unittest.TestCase):
         request[50:] = -500.0
         response = np.full(300, 200.0)
         response[52:] = -800.0
-        frame = pd.DataFrame({"AREQ": request, "AILE": response})
+        frame = pd.DataFrame({"LXRQ": request, "LX": response})
 
         segments, median, mean, std = evaluate_step_response(
-            frame, "AILE", "AREQ", sampling_hz=100
+            frame, "LX", "LXRQ", sampling_hz=100
         )
 
         self.assertEqual(len(segments), 1)
@@ -30,18 +30,18 @@ class ScopeStepResponseTests(unittest.TestCase):
         response = np.full(300, 100.0)
         response[52:152] = 1100.0
 
-        # A simultaneous change on another axis must not alter the RUDD samples
-        # selected for RUDD's independent response calculation.
+        # A simultaneous change on another axis must not alter the RX samples
+        # selected for RX's independent response calculation.
         other_request = np.zeros(300)
         other_request[50:] = 900.0
         frame = pd.DataFrame({
-            "RREQ": request,
-            "RUDD": response,
-            "AREQ": other_request,
+            "RXRQ": request,
+            "RX": response,
+            "LXRQ": other_request,
         })
 
         segments, median, mean, std = evaluate_step_response(
-            frame, "RUDD", "RREQ", sampling_hz=100
+            frame, "RX", "RXRQ", sampling_hz=100
         )
 
         self.assertEqual(len(segments), 2)

@@ -100,19 +100,19 @@ def request_new_action(
             action_request = [0, 0, deflx_choice, defly_choice]
 
     elif difficulty == "hard":
-        aile_choice = random.choice(
+        lx_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
         )
-        elev_choice = random.choice(
+        ly_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
         )
-        thro_choice = random.choice(
+        ry_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
         )
-        rudd_choice = random.choice(
+        rx_choice = random.choice(
             [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
         )
-        action_request = [aile_choice, elev_choice, thro_choice, rudd_choice]
+        action_request = [lx_choice, ly_choice, ry_choice, rx_choice]
 
     elif difficulty == "ultra":
         action_request = [
@@ -139,41 +139,41 @@ def find_lines(channel):
 
 def find_t_points(step_path: str | Path, fps: int):
     stepfile = pd.read_csv(step_path, delimiter="\t")
-    aile, elev, thro, rudd = [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]
+    lx, ly, ry, rx = [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]
 
     i = 0
-    while i < len(stepfile) and stepfile["AMED"].iloc[i] < 0.20:
+    while i < len(stepfile) and stepfile["LXMED"].iloc[i] < 0.20:
         i += 1
-    aile[0] = [min(i, len(stepfile) - 1) / fps, stepfile["AMED"].iloc[min(i, len(stepfile) - 1)]]
-    while i < len(stepfile) and stepfile["AMED"].iloc[i] < 0.80:
+    lx[0] = [min(i, len(stepfile) - 1) / fps, stepfile["LXMED"].iloc[min(i, len(stepfile) - 1)]]
+    while i < len(stepfile) and stepfile["LXMED"].iloc[i] < 0.80:
         i += 1
-    aile[1] = [min(i, len(stepfile) - 1) / fps, stepfile["AMED"].iloc[min(i, len(stepfile) - 1)]]
+    lx[1] = [min(i, len(stepfile) - 1) / fps, stepfile["LXMED"].iloc[min(i, len(stepfile) - 1)]]
 
     i = 0
-    while i < len(stepfile) and stepfile["EMED"].iloc[i] < 0.20:
+    while i < len(stepfile) and stepfile["LYMED"].iloc[i] < 0.20:
         i += 1
-    elev[0] = [min(i, len(stepfile) - 1) / fps, stepfile["EMED"].iloc[min(i, len(stepfile) - 1)]]
-    while i < len(stepfile) and stepfile["EMED"].iloc[i] < 0.80:
+    ly[0] = [min(i, len(stepfile) - 1) / fps, stepfile["LYMED"].iloc[min(i, len(stepfile) - 1)]]
+    while i < len(stepfile) and stepfile["LYMED"].iloc[i] < 0.80:
         i += 1
-    elev[1] = [min(i, len(stepfile) - 1) / fps, stepfile["EMED"].iloc[min(i, len(stepfile) - 1)]]
+    ly[1] = [min(i, len(stepfile) - 1) / fps, stepfile["LYMED"].iloc[min(i, len(stepfile) - 1)]]
 
     i = 0
-    while i < len(stepfile) and stepfile["TMED"].iloc[i] < 0.20:
+    while i < len(stepfile) and stepfile["RYMED"].iloc[i] < 0.20:
         i += 1
-    thro[0] = [min(i, len(stepfile) - 1) / fps, stepfile["TMED"].iloc[min(i, len(stepfile) - 1)]]
-    while i < len(stepfile) and stepfile["TMED"].iloc[i] < 0.80:
+    ry[0] = [min(i, len(stepfile) - 1) / fps, stepfile["RYMED"].iloc[min(i, len(stepfile) - 1)]]
+    while i < len(stepfile) and stepfile["RYMED"].iloc[i] < 0.80:
         i += 1
-    thro[1] = [min(i, len(stepfile) - 1) / fps, stepfile["TMED"].iloc[min(i, len(stepfile) - 1)]]
+    ry[1] = [min(i, len(stepfile) - 1) / fps, stepfile["RYMED"].iloc[min(i, len(stepfile) - 1)]]
 
     i = 0
-    while i < len(stepfile) and stepfile["RMED"].iloc[i] < 0.20:
+    while i < len(stepfile) and stepfile["RXMED"].iloc[i] < 0.20:
         i += 1
-    rudd[0] = [min(i, len(stepfile) - 1) / fps, stepfile["RMED"].iloc[min(i, len(stepfile) - 1)]]
-    while i < len(stepfile) and stepfile["RMED"].iloc[i] < 0.80:
+    rx[0] = [min(i, len(stepfile) - 1) / fps, stepfile["RXMED"].iloc[min(i, len(stepfile) - 1)]]
+    while i < len(stepfile) and stepfile["RXMED"].iloc[i] < 0.80:
         i += 1
-    rudd[1] = [min(i, len(stepfile) - 1) / fps, stepfile["RMED"].iloc[min(i, len(stepfile) - 1)]]
+    rx[1] = [min(i, len(stepfile) - 1) / fps, stepfile["RXMED"].iloc[min(i, len(stepfile) - 1)]]
 
-    return find_lines(aile), find_lines(elev), find_lines(thro), find_lines(rudd)
+    return find_lines(lx), find_lines(ly), find_lines(ry), find_lines(rx)
 
 
 def build_output_paths(config: ScopeConfig):
@@ -239,6 +239,13 @@ def open_file_with_os(path: str | Path):
         pass
 
 
+LEGACY_SCOPE_COLUMNS = {"AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX", "AREQ": "LXRQ", "EREQ": "LYRQ", "TREQ": "RYRQ", "RREQ": "RXRQ"}
+
+def normalize_scope_columns(data: pd.DataFrame) -> pd.DataFrame:
+    rename = {old: new for old, new in LEGACY_SCOPE_COLUMNS.items() if old in data.columns and new not in data.columns}
+    return data.rename(columns=rename)
+
+
 def can_run_evaluation(logfile_path: Path) -> tuple[bool, str]:
     if not logfile_path.exists():
         return False, "Log file does not exist."
@@ -254,7 +261,8 @@ def can_run_evaluation(logfile_path: Path) -> tuple[bool, str]:
     if data.empty:
         return False, "Log file contains no samples."
 
-    required_cols = {"AILE", "ELEV", "THRO", "RUDD", "AREQ", "EREQ", "TREQ", "RREQ"}
+    data = normalize_scope_columns(data)
+    required_cols = {"LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"}
     missing = required_cols - set(data.columns)
     if missing:
         return False, f"Missing columns: {sorted(missing)}"
@@ -275,32 +283,32 @@ def run_evaluation(
         return "", ""
 
     emit_log(config, log_callback, f"Evaluating step response from data: {logfile_path}")
-    datafile = pd.read_csv(logfile_path, sep="\t")
+    datafile = normalize_scope_columns(pd.read_csv(logfile_path, sep="\t"))
 
     try:
-        emit_log(config, log_callback, "Calculating channel AILE...", debug=True)
-        step_aile, step_aile_median, step_aile_mean, step_aile_std = evaluate_step_response(
-            datafile, "AILE", "AREQ", sampling_hz=config.fps
+        emit_log(config, log_callback, "Calculating channel LX...", debug=True)
+        step_lx, step_lx_median, step_lx_mean, step_lx_std = evaluate_step_response(
+            datafile, "LX", "LXRQ", sampling_hz=config.fps
         )
-        emit_log(config, log_callback, "AILE evaluation complete.", debug=True)
+        emit_log(config, log_callback, "LX evaluation complete.", debug=True)
 
-        emit_log(config, log_callback, "Calculating channel ELEV...", debug=True)
-        step_elev, step_elev_median, step_elev_mean, step_elev_std = evaluate_step_response(
-            datafile, "ELEV", "EREQ", sampling_hz=config.fps
+        emit_log(config, log_callback, "Calculating channel LY...", debug=True)
+        step_ly, step_ly_median, step_ly_mean, step_ly_std = evaluate_step_response(
+            datafile, "LY", "LYRQ", sampling_hz=config.fps
         )
-        emit_log(config, log_callback, "ELEV evaluation complete.", debug=True)
+        emit_log(config, log_callback, "LY evaluation complete.", debug=True)
 
-        emit_log(config, log_callback, "Calculating channel THRO...", debug=True)
-        step_thro, step_thro_median, step_thro_mean, step_thro_std = evaluate_step_response(
-            datafile, "THRO", "TREQ", sampling_hz=config.fps
+        emit_log(config, log_callback, "Calculating channel RY...", debug=True)
+        step_ry, step_ry_median, step_ry_mean, step_ry_std = evaluate_step_response(
+            datafile, "RY", "RYRQ", sampling_hz=config.fps
         )
-        emit_log(config, log_callback, "THRO evaluation complete.", debug=True)
+        emit_log(config, log_callback, "RY evaluation complete.", debug=True)
 
-        emit_log(config, log_callback, "Calculating channel RUDD...", debug=True)
-        step_rudd, step_rudd_median, step_rudd_mean, step_rudd_std = evaluate_step_response(
-            datafile, "RUDD", "RREQ", sampling_hz=config.fps
+        emit_log(config, log_callback, "Calculating channel RX...", debug=True)
+        step_rx, step_rx_median, step_rx_mean, step_rx_std = evaluate_step_response(
+            datafile, "RX", "RXRQ", sampling_hz=config.fps
         )
-        emit_log(config, log_callback, "RUDD evaluation complete.", debug=True)
+        emit_log(config, log_callback, "RX evaluation complete.", debug=True)
 
     except Exception as exc:
         emit_log(config, log_callback, f"Evaluation failed: {exc}")
@@ -308,18 +316,18 @@ def run_evaluation(
 
     sample_limit = min(
         200,
-        len(step_aile_mean),
-        len(step_aile_median),
-        len(step_aile_std),
-        len(step_elev_mean),
-        len(step_elev_median),
-        len(step_elev_std),
-        len(step_thro_mean),
-        len(step_thro_median),
-        len(step_thro_std),
-        len(step_rudd_mean),
-        len(step_rudd_median),
-        len(step_rudd_std),
+        len(step_lx_mean),
+        len(step_lx_median),
+        len(step_lx_std),
+        len(step_ly_mean),
+        len(step_ly_median),
+        len(step_ly_std),
+        len(step_ry_mean),
+        len(step_ry_median),
+        len(step_ry_std),
+        len(step_rx_mean),
+        len(step_rx_median),
+        len(step_rx_std),
     )
 
     if sample_limit < 10:
@@ -333,35 +341,27 @@ def run_evaluation(
         emit_log(config, log_callback, f"Saving step response data to file: {step_path}", debug=True)
         stmap = (
             "Time[s]",
-            "AMEA",
-            "AMED",
-            "ASTD",
-            "EMEA",
-            "EMED",
-            "ESTD",
-            "TMEA",
-            "TMED",
-            "TSTD",
-            "RMEA",
-            "RMED",
-            "RSTD",
+            "LXMEA", "LXMED", "LXSTD",
+            "LYMEA", "LYMED", "LYSTD",
+            "RYMEA", "RYMED", "RYSTD",
+            "RXMEA", "RXMED", "RXSTD",
         )
 
         with open(step_path, "w", encoding="utf-8", newline="") as stepfile:
             csvdump = [
                 [i / config.fps for i in range(sample_limit)],
-                step_aile_mean[:sample_limit],
-                step_aile_median[:sample_limit],
-                step_aile_std[:sample_limit],
-                step_elev_mean[:sample_limit],
-                step_elev_median[:sample_limit],
-                step_elev_std[:sample_limit],
-                step_thro_mean[:sample_limit],
-                step_thro_median[:sample_limit],
-                step_thro_std[:sample_limit],
-                step_rudd_mean[:sample_limit],
-                step_rudd_median[:sample_limit],
-                step_rudd_std[:sample_limit],
+                step_lx_mean[:sample_limit],
+                step_lx_median[:sample_limit],
+                step_lx_std[:sample_limit],
+                step_ly_mean[:sample_limit],
+                step_ly_median[:sample_limit],
+                step_ly_std[:sample_limit],
+                step_ry_mean[:sample_limit],
+                step_ry_median[:sample_limit],
+                step_ry_std[:sample_limit],
+                step_rx_mean[:sample_limit],
+                step_rx_median[:sample_limit],
+                step_rx_std[:sample_limit],
             ]
 
             stepfile.write("\t".join(stmap) + "\n")
@@ -395,13 +395,13 @@ def run_evaluation(
     else:
         fig.suptitle(f"{config.user}_{config.difficulty}")
 
-    x1 = [i / config.fps for i in range(0, len(step_aile_mean))]
-    ax1.plot(x1, step_aile_median, color="blue", label="Median")
-    ax1.plot(x1, step_aile_mean, color="red", label="Mean")
+    x1 = [i / config.fps for i in range(0, len(step_lx_mean))]
+    ax1.plot(x1, step_lx_median, color="blue", label="Median")
+    ax1.plot(x1, step_lx_mean, color="red", label="Mean")
     ax1.fill_between(
         x1,
-        step_aile_mean - step_aile_std,
-        step_aile_mean + step_aile_std,
+        step_lx_mean - step_lx_std,
+        step_lx_mean + step_lx_std,
         color="red",
         label="Stdev",
         alpha=0.3,
@@ -412,15 +412,15 @@ def run_evaluation(
     ax1.grid()
     ax1.set_ylabel("Step response")
     ax1.set_xlabel("Time [s]")
-    ax1.set_title("AILE")
+    ax1.set_title("LX")
 
-    x2 = [i / config.fps for i in range(0, len(step_elev_mean))]
-    ax2.plot(x2, step_elev_median, color="blue", label="Median")
-    ax2.plot(x2, step_elev_mean, color="red", label="Mean")
+    x2 = [i / config.fps for i in range(0, len(step_ly_mean))]
+    ax2.plot(x2, step_ly_median, color="blue", label="Median")
+    ax2.plot(x2, step_ly_mean, color="red", label="Mean")
     ax2.fill_between(
         x2,
-        step_elev_mean - step_elev_std,
-        step_elev_mean + step_elev_std,
+        step_ly_mean - step_ly_std,
+        step_ly_mean + step_ly_std,
         color="red",
         label="Stdev",
         alpha=0.3,
@@ -431,15 +431,15 @@ def run_evaluation(
     ax2.grid()
     ax2.set_ylabel("Step response")
     ax2.set_xlabel("Time [s]")
-    ax2.set_title("ELEV")
+    ax2.set_title("LY")
 
-    x3 = [i / config.fps for i in range(0, len(step_thro_mean))]
-    ax3.plot(x3, step_thro_median, color="blue", label="Median")
-    ax3.plot(x3, step_thro_mean, color="red", label="Mean")
+    x3 = [i / config.fps for i in range(0, len(step_ry_mean))]
+    ax3.plot(x3, step_ry_median, color="blue", label="Median")
+    ax3.plot(x3, step_ry_mean, color="red", label="Mean")
     ax3.fill_between(
         x3,
-        step_thro_mean - step_thro_std,
-        step_thro_mean + step_thro_std,
+        step_ry_mean - step_ry_std,
+        step_ry_mean + step_ry_std,
         color="red",
         label="Stdev",
         alpha=0.3,
@@ -450,15 +450,15 @@ def run_evaluation(
     ax3.grid()
     ax3.set_ylabel("Step response")
     ax3.set_xlabel("Time [s]")
-    ax3.set_title("THRO")
+    ax3.set_title("RY")
 
-    x4 = [i / config.fps for i in range(0, len(step_rudd_mean))]
-    ax4.plot(x4, step_rudd_median, color="blue", label="Median")
-    ax4.plot(x4, step_rudd_mean, color="red", label="Mean")
+    x4 = [i / config.fps for i in range(0, len(step_rx_mean))]
+    ax4.plot(x4, step_rx_median, color="blue", label="Median")
+    ax4.plot(x4, step_rx_mean, color="red", label="Mean")
     ax4.fill_between(
         x4,
-        step_rudd_mean - step_rudd_std,
-        step_rudd_mean + step_rudd_std,
+        step_rx_mean - step_rx_std,
+        step_rx_mean + step_rx_std,
         color="red",
         label="Stdev",
         alpha=0.3,
@@ -469,7 +469,7 @@ def run_evaluation(
     ax4.grid()
     ax4.set_ylabel("Step response")
     ax4.set_xlabel("Time [s]")
-    ax4.set_title("RUDD")
+    ax4.set_title("RX")
 
     plt.tight_layout()
 
@@ -495,8 +495,8 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
 
     emit_log(config, log_callback, "Validating SCoPE configuration...", debug=True)
 
-    chmap = ("AILE", "ELEV", "THRO", "RUDD", "LEVR", "BUTT", "SIDL", "SIDR")
-    acmap = ("AREQ", "EREQ", "TREQ", "RREQ", "IRRS")
+    chmap = ("LX", "LY", "RY", "RX", "LEVR", "BUTT", "SIDL", "SIDR")
+    acmap = ("LXRQ", "LYRQ", "RYRQ", "RXRQ", "IRRS")
     evmap = ("Time[s]", "Action", "Completed?", "Total mistakes")
 
     action_shuffle = list(range(16))
@@ -586,7 +586,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                     if config.difficulty == "easy":
                         evlfile.write(item)
                     else:
-                        evlfile.write("AREQ\tEREQ\tTREQ\tRREQ")
+                        evlfile.write("LXRQ\tLYRQ\tRYRQ\tRXRQ")
                 else:
                     evlfile.write(item)
                 evlfile.write("\t")
@@ -639,7 +639,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
             pygame.event.pump()
 
             mapped = [0, 0, 0, 0]
-            for i, key in enumerate(("AILE", "ELEV", "THRO", "RUDD")):
+            for i, key in enumerate(("LX", "LY", "RY", "RX")):
                 axis_idx = config.axis_map[key]
                 if 0 <= axis_idx < axes:
                     mapped[i] = int(controller.get_axis(axis_idx) * stick_max)

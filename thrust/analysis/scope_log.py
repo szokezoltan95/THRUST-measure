@@ -13,9 +13,13 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-REQUIRED_COLUMNS = {"TIME", "AILE", "ELEV", "THRO", "RUDD", "AREQ", "EREQ", "TREQ", "RREQ"}
-REQUEST_COLUMNS = ("AREQ", "EREQ", "TREQ", "RREQ")
-RESPONSE_BY_REQUEST = {"AREQ": "AILE", "EREQ": "ELEV", "TREQ": "THRO", "RREQ": "RUDD"}
+REQUIRED_COLUMNS = {"TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"}
+LEGACY_COLUMN_NAMES = {
+    "AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX",
+    "AREQ": "LXRQ", "EREQ": "LYRQ", "TREQ": "RYRQ", "RREQ": "RXRQ",
+}
+REQUEST_COLUMNS = ("LXRQ", "LYRQ", "RYRQ", "RXRQ")
+RESPONSE_BY_REQUEST = {"LXRQ": "LX", "LYRQ": "LY", "RYRQ": "RY", "RXRQ": "RX"}
 RESPONSE_NAMES = tuple(RESPONSE_BY_REQUEST.values())
 
 
@@ -201,7 +205,11 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
     opener = gzip.open if source.suffix == ".gz" else open
     with opener(source, "rt", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        columns = set(reader.fieldnames or [])
+        original_columns = reader.fieldnames or []
+        reader.fieldnames = [LEGACY_COLUMN_NAMES.get(name, name) for name in original_columns]
+        columns = set(reader.fieldnames)
+        if len(columns) != len(reader.fieldnames):
+            raise ScopeLogError("SCoPE log contains duplicate channel names after alias normalization.")
         missing = REQUIRED_COLUMNS - columns
         if missing:
             raise ScopeLogError(f"SCoPE log is missing columns: {sorted(missing)}")
@@ -235,8 +243,8 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
         for channel in REQUEST_COLUMNS
     }
     return {
-        "schema_version": "scope-analysis-v3",
-        "source_format": "SCoPE_TSV_V1",
+        "schema_version": "scope-analysis-v4",
+        "source_format": "SCoPE_TSV_V2",
         "source_file": source.name,
         "sample_count": len(rows),
         "start_time_s": times[0],
