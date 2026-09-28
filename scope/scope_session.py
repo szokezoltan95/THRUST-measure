@@ -7,7 +7,6 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from itertools import zip_longest
 from pathlib import Path
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
@@ -20,6 +19,7 @@ import pygame
 
 from scope.SCoPE_GUI import SCoPE_GUI
 from scope.scope_config import ScopeConfig
+from scope.scope_metrics import evaluate_step_response
 from thrust.raw_compression import compress_raw_log
 
 
@@ -127,45 +127,6 @@ def request_new_action(
     action_request = [int(v) for v in action_request]
     emit_log(config, log_callback, f"New action requested: {action_request}", debug=True)
     return action_request, shuffle_sequence
-
-
-def evaluate_step_response(
-    data_in: pd.DataFrame,
-    channel: str,
-    creq: str,
-):
-    data_out = [[]]
-    j = 0
-    k = 0
-    n_gain = 1
-    n_offset = 0
-
-    while k < len(data_in) and data_in[creq].iloc[k] == 0:
-        k += 1
-
-    if k >= len(data_in):
-        raise ValueError(f"No valid steps found for {creq}")
-
-    for i in range(k, len(data_in)):
-        if data_in[creq].iloc[i - 1] != data_in[creq].iloc[i]:
-            norm = abs((data_in[creq].iloc[i] - data_in[creq].iloc[i - 1]))
-            if norm == 0:
-                continue
-            n_gain = 1 / norm
-            if data_in[creq].iloc[i] < data_in[creq].iloc[i - 1]:
-                n_gain = -n_gain
-            n_offset = data_in[creq].iloc[i - 1]
-            data_out.append([])
-            j += 1
-
-        data_out[j].append(((data_in[channel].iloc[i]) - n_offset) * n_gain)
-
-    arr = np.array(list(zip_longest(*data_out)), dtype=float)
-    data_median = np.nanmedian(arr, axis=1)
-    data_mean = np.nanmean(arr, axis=1)
-    data_std = np.nanstd(arr, axis=1)
-
-    return data_out, data_median, data_mean, data_std
 
 
 def find_lines(channel):
@@ -319,25 +280,25 @@ def run_evaluation(
     try:
         emit_log(config, log_callback, "Calculating channel AILE...", debug=True)
         step_aile, step_aile_median, step_aile_mean, step_aile_std = evaluate_step_response(
-            datafile, "AILE", "AREQ"
+            datafile, "AILE", "AREQ", sampling_hz=config.fps
         )
         emit_log(config, log_callback, "AILE evaluation complete.", debug=True)
 
         emit_log(config, log_callback, "Calculating channel ELEV...", debug=True)
         step_elev, step_elev_median, step_elev_mean, step_elev_std = evaluate_step_response(
-            datafile, "ELEV", "EREQ"
+            datafile, "ELEV", "EREQ", sampling_hz=config.fps
         )
         emit_log(config, log_callback, "ELEV evaluation complete.", debug=True)
 
         emit_log(config, log_callback, "Calculating channel THRO...", debug=True)
         step_thro, step_thro_median, step_thro_mean, step_thro_std = evaluate_step_response(
-            datafile, "THRO", "TREQ"
+            datafile, "THRO", "TREQ", sampling_hz=config.fps
         )
         emit_log(config, log_callback, "THRO evaluation complete.", debug=True)
 
         emit_log(config, log_callback, "Calculating channel RUDD...", debug=True)
         step_rudd, step_rudd_median, step_rudd_mean, step_rudd_std = evaluate_step_response(
-            datafile, "RUDD", "RREQ"
+            datafile, "RUDD", "RREQ", sampling_hz=config.fps
         )
         emit_log(config, log_callback, "RUDD evaluation complete.", debug=True)
 
