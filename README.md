@@ -143,6 +143,15 @@ Current focus:
 Research / academic use.
 License to be defined.
 
+## Measurement files
+
+THRUST-measure saves one compressed raw log and one adjacent `.analysis.json`
+sidecar for each recorded test. The sidecar contains the versioned basic
+statistics, event/task boundaries, quality indicators, and normalized response
+points used to draw the graphs. The WebDB stores and displays these values
+without recalculating an individual measurement. Pygame renders the two test
+scenes; PyQt6 remains the launcher and settings interface.
+
 
 ## Import old or offline measurements
 
