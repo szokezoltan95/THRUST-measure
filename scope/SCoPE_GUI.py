@@ -15,6 +15,7 @@ class SCoPE_GUI:
         stick_radius=20, stick_outline_width=6, zone_outline_width=8,
         gimbal_border_width=12, gimbal_cross_width=6, **_unused,
     ):
+        self.gimbal_size = gimbal_size
         self.stick_max = stick_max
         self.stick_zone = stick_zone
         self.colors = {
@@ -49,7 +50,7 @@ class SCoPE_GUI:
     def _redraw(self):
         width, height = self.screen.get_size()
         self.screen.fill(self.colors["background"])
-        size = min(height * 0.66, width * 0.38, 500)
+        size = min(height * 0.66, width * 0.38, self.gimbal_size)
         size = max(160, int(size))
         gap = max(30, int(width * 0.035))
         y = int(height * 0.47 - size / 2)
