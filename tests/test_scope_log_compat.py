@@ -20,7 +20,7 @@ class ScopeLogNamingTests(unittest.TestCase):
         self.assertEqual(set(result["columns"]), {
             "TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"
         })
-        self.assertEqual(result["schema_version"], "scope-analysis-v4")
+        self.assertEqual(result["schema_version"], "thrust-analysis-v1")
 
     def test_legacy_axis_map_settings_load_into_new_keys(self):
         config = ScopeConfig.from_dict({
