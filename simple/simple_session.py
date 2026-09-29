@@ -168,7 +168,14 @@ def run_simple_session(
                     aborted = True
                     break
                 gui.set_prompt(str(count))
-                clock.tick(1)
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    if not gui.pump():
+                        aborted = True
+                        break
+                    clock.tick(60)
+                if aborted:
+                    break
             gui.set_prompt("")
             last_tick = pygame.time.get_ticks()
             while gui.pump() and not _active(_axis_value(controller, break_axis)):
