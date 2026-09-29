@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QSplitter,
     QTabWidget,
     QTableWidget,
