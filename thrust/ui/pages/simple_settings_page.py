@@ -61,18 +61,29 @@ class SimpleSettingsPage(QWidget):
     def _color_button(self, color: str) -> QPushButton:
         button = QPushButton(color)
         button.setProperty("hex_color", color)
-        button.setStyleSheet(f"background-color: {color}; color: #101820; font-weight: 600; padding: 6px 12px;")
+        button.setStyleSheet(f"background-color: {color}; color: {self._contrast_text(color)}; font-weight: 600; padding: 6px 12px;")
         button.clicked.connect(lambda _checked=False, control=button: self._choose_color(control))
         return button
 
     def _choose_color(self, button: QPushButton) -> None:
         current = QColor(str(button.property("hex_color")))
-        selected = QColorDialog.getColor(current, self, "Vybrať farbu zóny")
+        selected = QColorDialog.getColor(
+            current,
+            self,
+            "Vybrať farbu zóny",
+            QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
         if selected.isValid():
             value = selected.name()
             button.setProperty("hex_color", value)
             button.setText(value)
-            button.setStyleSheet(f"background-color: {value}; color: #101820; font-weight: 600; padding: 6px 12px;")
+            button.setStyleSheet(f"background-color: {value}; color: {self._contrast_text(value)}; font-weight: 600; padding: 6px 12px;")
+
+    @staticmethod
+    def _contrast_text(value: str) -> str:
+        color = value.lstrip("#")
+        brightness = (int(color[0:2], 16) * 299 + int(color[2:4], 16) * 587 + int(color[4:6], 16) * 114) / 1000
+        return "#101820" if brightness > 150 else "#ffffff"
 
     def _update_derived_height(self, *_args) -> None:
         size = self.resolution.currentData()
@@ -140,7 +151,7 @@ class SimpleSettingsPage(QWidget):
         for control, color in ((self.zone_idle_fill, config.zone_idle_fill), (self.zone_idle_outline, config.zone_idle_outline), (self.zone_ok_fill, config.zone_ok_fill), (self.zone_ok_outline, config.zone_ok_outline)):
             control.setProperty("hex_color", color)
             control.setText(color)
-            control.setStyleSheet(f"background-color: {color}; color: #101820; font-weight: 600; padding: 6px 12px;")
+            control.setStyleSheet(f"background-color: {color}; color: {self._contrast_text(color)}; font-weight: 600; padding: 6px 12px;")
         self._update_derived_height()
 
     def build_simple_config(self) -> SimpleConfig:

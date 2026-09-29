@@ -160,7 +160,7 @@ class ScopeSettingsPage(QWidget):
         self.tabs.addTab(appearance, "Appearance")
 
     def _pick_color(self, key: str) -> None:
-        color = QColorDialog.getColor()
+        color = QColorDialog.getColor(options=QColorDialog.ColorDialogOption.DontUseNativeDialog)
         if color.isValid():
             self.colors[key] = color.name()
             self._refresh_color_buttons()

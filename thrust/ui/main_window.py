@@ -9,13 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QTimer, QSize, Qt
-from PyQt6.QtGui import QImageIOHandler, QImageReader, QPixmap
+from PyQt6.QtCore import QSettings, QTimer, Qt
+from PyQt6.QtGui import QColor, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -27,6 +29,9 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -36,7 +41,6 @@ from scope.scope_config import ScopeConfig
 from simple.simple_config import SimpleConfig
 from thrust.analysis.scope_log import analyze_scope_log
 from thrust.analysis.simple_log import analyze_simple_log, save_step_graph, write_step_response
-from thrust.paths import ASSETS_DIR, SIMPLE_OUTPUT_DIR
 from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
@@ -111,6 +115,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
         self.resize(1200, 820)
+        self.setMinimumSize(760, 600)
+        self.settings = QSettings("THRUST", "THRUST-measure")
+        self.theme_mode = str(self.settings.value("appearance/theme", "system"))
+        self._system_palette = QApplication.palette()
 
         self.client: WebDbClient | None = None
         self.current_manifest: dict[str, Any] | None = None
@@ -140,13 +148,13 @@ class MainWindow(QMainWindow):
         self.disconnect_button.setVisible(False)
 
         self.connection_status = QLabel("● WebDB DISCONNECTED · Offline mode")
-        self.connection_status.setStyleSheet("font-weight: 700; color: #ed6262;")
+        self.connection_status.setObjectName("connectionStatus")
+        self.connection_status.setProperty("connectionState", "disconnected")
 
         self.program_selector = QComboBox()
         self.program_selector.addItem("SCoPE", "SCOPE")
         self.program_selector.addItem("SimPLE", "SIMPLE")
         self.program_selector.setVisible(False)
-        self.mode_logos: dict[str, QPixmap] = {}
         self.mode_button_group = QButtonGroup(self)
         self.mode_button_group.setExclusive(True)
         mode_switch = QWidget()
@@ -185,12 +193,6 @@ class MainWindow(QMainWindow):
         selection_form.addRow("Test version:", self.test_combo)
         selection_group_layout.addLayout(selection_form)
 
-        self.mode_preview = QLabel("SCoPE")
-        self.mode_preview.setObjectName("modePreview")
-        self.mode_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mode_preview.setFixedHeight(96)
-        self.mode_preview.setToolTip("Vybraný merací program")
-
         joystick_group = QGroupBox("Joystick link")
         joystick_layout = QVBoxLayout(joystick_group)
         joystick_row = QHBoxLayout()
@@ -205,6 +207,7 @@ class MainWindow(QMainWindow):
         self.joystick_led = QLabel("● DISCONNECTED")
         self.joystick_led.setObjectName("joystickLed")
         self.joystick_status_text = QLabel("Searching for joystick…")
+        self.joystick_status_text.setWordWrap(True)
         joystick_status_row.addWidget(self.joystick_led)
         joystick_status_row.addWidget(self.joystick_status_text, 1)
         joystick_layout.addLayout(joystick_status_row)
@@ -224,7 +227,9 @@ class MainWindow(QMainWindow):
         joystick_layout.addLayout(feedback_grid)
 
         self.run_button = QPushButton("Start measurement")
-        self.run_button.setMinimumHeight(44)
+        self.run_button.setObjectName("startMeasurement")
+        self.run_button.setMinimumHeight(62)
+        self.run_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
         self.advanced_button = QPushButton("Settings")
@@ -232,8 +237,9 @@ class MainWindow(QMainWindow):
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setMinimumHeight(90)
-        self.log_output.setMaximumHeight(150)
+        self.log_output.setObjectName("sessionLog")
+        self.log_output.setMinimumHeight(0)
+        self.log_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         central = QWidget()
         root = QVBoxLayout(central)
@@ -241,35 +247,15 @@ class MainWindow(QMainWindow):
         root.setSpacing(10)
 
         title = QLabel("THRUST")
-        title.setStyleSheet("font-size: 30px; font-weight: 800; letter-spacing: 2px; color: #eaf5ff;")
+        title.setObjectName("appTitle")
         subtitle = QLabel("UAV CONTROL PERFORMANCE · MEASUREMENT CENTER")
-        subtitle.setStyleSheet("color: #7892aa; letter-spacing: 1px;")
+        subtitle.setObjectName("appSubtitle")
         title_row = QHBoxLayout()
         title_block = QVBoxLayout()
         title_block.addWidget(title)
         title_block.addWidget(subtitle)
         title_row.addLayout(title_block)
         title_row.addStretch()
-        for filename, label in (("scope_logo.png", "SCOPE"), ("simple_logo.png", "SIMPLE")):
-            logo_path = ASSETS_DIR / filename
-            if logo_path.is_file():
-                reader = QImageReader(str(logo_path))
-                reader.setAutoTransform(True)
-                source_size = reader.size()
-                target_size = source_size.scaled(QSize(520, 152), Qt.AspectRatioMode.KeepAspectRatio)
-                can_scale_while_reading = reader.supportsOption(QImageIOHandler.ImageOption.ScaledSize)
-                estimated_bytes = source_size.width() * source_size.height() * 4
-                if can_scale_while_reading:
-                    reader.setScaledSize(target_size)
-                elif estimated_bytes > 180 * 1024 * 1024:
-                    # Keep the app startup safe when a PNG decoder cannot downsample this oversized asset.
-                    continue
-                image = reader.read()
-                if not image.isNull():
-                    if not can_scale_while_reading:
-                        image = image.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    self.mode_logos[label] = QPixmap.fromImage(image)
-
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -278,51 +264,63 @@ class MainWindow(QMainWindow):
         session_actions_layout.addWidget(self.connect_button)
         session_actions_layout.addWidget(self.disconnect_button)
         session_actions_layout.addWidget(self.advanced_button)
+        session_actions_layout.addSpacing(12)
+        theme_label = QLabel("Appearance:")
+        session_actions_layout.addWidget(theme_label)
+        self.theme_selector = QComboBox()
+        for label, value in (("System", "system"), ("Dark", "dark"), ("Light", "light")):
+            self.theme_selector.addItem(label, value)
+        theme_index = self.theme_selector.findData(self.theme_mode)
+        self.theme_selector.setCurrentIndex(theme_index if theme_index >= 0 else 0)
+        self.theme_selector.setToolTip("Follow the system appearance or select a fixed color theme")
+        self.theme_selector.currentIndexChanged.connect(self._theme_selection_changed)
+        session_actions_layout.addWidget(self.theme_selector)
 
         session_ribbon = QGroupBox("Measurement session")
         session_ribbon_layout = QHBoxLayout(session_ribbon)
         session_ribbon_layout.setContentsMargins(10, 4, 10, 4)
         session_ribbon_layout.addWidget(session_actions)
 
-        left = QVBoxLayout()
-        left.setSpacing(10)
-        left.addWidget(selection_group)
-        left.addWidget(self.mode_preview)
-        left.addWidget(self.run_button)
-        right = QVBoxLayout()
-        right.setSpacing(10)
-        right.addWidget(joystick_group)
-        right.addStretch()
+        controls_panel = QWidget()
+        controls_layout = QVBoxLayout(controls_panel)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(10)
+        controls_layout.addWidget(selection_group)
+        controls_layout.addWidget(joystick_group)
+        controls_layout.addStretch(1)
+        controls_scroll = QScrollArea()
+        controls_scroll.setWidgetResizable(True)
+        controls_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        controls_scroll.setWidget(controls_panel)
+        controls_scroll.setMinimumWidth(300)
 
-        columns = QGridLayout()
-        columns.setHorizontalSpacing(12)
-        columns.setVerticalSpacing(8)
-        columns.addLayout(left, 0, 0)
-        columns.addLayout(right, 0, 1)
-        columns.setColumnStretch(0, 1)
-        columns.setColumnStretch(1, 1)
+        log_panel = QWidget()
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.setSpacing(6)
+        log_title = QLabel("Session log")
+        log_title.setObjectName("sectionTitle")
+        log_layout.addWidget(log_title)
+        log_layout.addWidget(self.log_output, 1)
+
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.addWidget(controls_scroll)
+        self.content_splitter.addWidget(log_panel)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 1)
+        self.content_splitter.setSizes([400, 720])
 
         root.addLayout(title_row)
         root.addWidget(session_ribbon)
-        root.addLayout(columns, 1)
-        root.addWidget(QLabel("Session log"))
-        root.addWidget(self.log_output)
+        root.addWidget(self.content_splitter, 1)
+        root.addWidget(self.run_button)
 
         self.setCentralWidget(central)
-        self.setStyleSheet("""
-            QMainWindow { background: #111820; color: #e7edf2; }
-            QGroupBox { border: 1px solid #344553; border-radius: 8px; margin-top: 10px; padding: 12px 10px 10px; font-weight: 600; }
-            QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #8fc7d8; }
-            QPushButton { background: #203542; border: 1px solid #4c7180; border-radius: 5px; padding: 7px 12px; }
-            QPushButton:hover { background: #2a4d5d; }
-            QComboBox, QLineEdit { background: #19242d; border: 1px solid #405563; border-radius: 4px; padding: 5px; }
-            QPushButton#modeSwitchOption { background: #17232d; border: 1px solid #405563; color: #9db1bf; font-size: 14px; font-weight: 700; padding: 7px 16px; }
-            QPushButton#modeSwitchOption:checked { background: #123e52; border: 1px solid #44b5ce; color: #f0fbff; }
-            QLabel#modePreview { background: #0b1218; border: 1px solid #344553; border-radius: 8px; color: #8fc7d8; font-size: 19px; font-weight: 700; }
-            QProgressBar#miniAxis { background: #1a2730; border: 1px solid #3b5661; border-radius: 3px; }
-            QProgressBar#miniAxis::chunk { background: #4da6bd; border-radius: 2px; }
-            QLabel#joystickLed { font-weight: 700; color: #e05252; }
-        """)
+        self._apply_theme()
+        style_hints = QGuiApplication.styleHints()
+        if hasattr(style_hints, "colorSchemeChanged"):
+            style_hints.colorSchemeChanged.connect(self._system_theme_changed)
         self._activate_offline_mode(show_dialog=False)
         self._refresh_joystick_selector()
         self.joystick_scan_timer = QTimer(self)
@@ -356,6 +354,128 @@ class MainWindow(QMainWindow):
         elif not self.common_page.joystick_active:
             self._select_joystick(self.joystick_selector.currentIndex())
 
+    def _selected_theme_is_dark(self) -> bool:
+        if self.theme_mode == "dark":
+            return True
+        if self.theme_mode == "light":
+            return False
+        scheme = QGuiApplication.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Dark:
+            return True
+        if scheme == Qt.ColorScheme.Light:
+            return False
+        return self._system_palette.color(QPalette.ColorRole.Window).lightness() < 128
+
+    def _theme_selection_changed(self, _index: int) -> None:
+        if not hasattr(self, "theme_selector"):
+            return
+        self.theme_mode = str(self.theme_selector.currentData() or "system")
+        self.settings.setValue("appearance/theme", self.theme_mode)
+        self._apply_theme()
+
+    def _system_theme_changed(self, *_args: object) -> None:
+        if self.theme_mode == "system":
+            self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        dark = self._selected_theme_is_dark()
+        colors = (
+            {
+                "window": "#111820", "surface": "#18232d", "surface_alt": "#202e39",
+                "input": "#0d151c", "text": "#edf3f7", "muted": "#a5b5c1",
+                "border": "#405563", "accent": "#55c7df", "selection": "#175269",
+                "button": "#243b49", "button_hover": "#315568", "disabled": "#26313a",
+                "disabled_text": "#aab3ba", "log": "#0b1218", "scroll": "#314552",
+            }
+            if dark else
+            {
+                "window": "#eef2f5", "surface": "#ffffff", "surface_alt": "#e6edf2",
+                "input": "#ffffff", "text": "#17232c", "muted": "#526574",
+                "border": "#aabac5", "accent": "#087d9b", "selection": "#b9e4ee",
+                "button": "#e0e9ee", "button_hover": "#cadce5", "disabled": "#71262b",
+                "disabled_text": "#ffffff", "log": "#f8fafb", "scroll": "#9aacb8",
+            }
+        )
+        palette = QPalette()
+        role_colors = {
+            QPalette.ColorRole.Window: colors["window"],
+            QPalette.ColorRole.WindowText: colors["text"],
+            QPalette.ColorRole.Base: colors["input"],
+            QPalette.ColorRole.AlternateBase: colors["surface_alt"],
+            QPalette.ColorRole.ToolTipBase: colors["surface"],
+            QPalette.ColorRole.ToolTipText: colors["text"],
+            QPalette.ColorRole.Text: colors["text"],
+            QPalette.ColorRole.Button: colors["button"],
+            QPalette.ColorRole.ButtonText: colors["text"],
+            QPalette.ColorRole.BrightText: "#ffffff" if dark else "#111820",
+            QPalette.ColorRole.Highlight: colors["selection"],
+            QPalette.ColorRole.HighlightedText: colors["text"] if dark else "#10212a",
+            QPalette.ColorRole.Link: colors["accent"],
+            QPalette.ColorRole.PlaceholderText: colors["muted"],
+        }
+        for role, value in role_colors.items():
+            palette.setColor(role, QColor(value))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(colors["disabled_text"]))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(colors["disabled_text"]))
+        palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(colors["disabled_text"]))
+        app = QApplication.instance()
+        if app is not None:
+            app.setPalette(palette)
+            app.setStyleSheet(f"""
+                QWidget {{ color: {colors['text']}; font-size: 13px; }}
+                QMainWindow, QDialog, QWidget#centralWidget {{ background: {colors['window']}; }}
+                QGroupBox {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 8px; margin-top: 10px; padding: 12px 10px 10px; font-weight: 600; }}
+                QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 5px; color: {colors['accent']}; }}
+                QLabel {{ color: {colors['text']}; background: transparent; }}
+                QLabel#appTitle {{ color: {colors['text']}; font-size: 30px; font-weight: 800; }}
+                QLabel#appSubtitle, QLabel#sectionTitle {{ color: {colors['muted']}; }}
+                QLabel#sectionTitle {{ font-weight: 700; }}
+                QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
+                QPlainTextEdit#sessionLog {{ background: {colors['log']}; font-family: monospace; font-size: 12px; }}
+                QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
+                QComboBox QAbstractItemView {{ color: {colors['text']}; background: {colors['surface']}; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; border: 1px solid {colors['border']}; outline: 0; }}
+                QPushButton {{ color: {colors['text']}; background: {colors['button']}; border: 1px solid {colors['border']}; border-radius: 5px; padding: 7px 12px; }}
+                QPushButton:hover {{ background: {colors['button_hover']}; border-color: {colors['accent']}; }}
+                QPushButton:pressed {{ background: {colors['selection']}; }}
+                QPushButton:disabled {{ color: {colors['disabled_text']}; background: {colors['disabled']}; border-color: {colors['disabled']}; }}
+                QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
+                QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
+                QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 17px; font-weight: 800; letter-spacing: .4px; }}
+                QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
+                QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
+                QCheckBox {{ color: {colors['text']}; spacing: 8px; }}
+                QCheckBox::indicator {{ width: 17px; height: 17px; border: 1px solid {colors['border']}; border-radius: 3px; background: {colors['input']}; }}
+                QCheckBox::indicator:checked {{ background: {colors['accent']}; border-color: {colors['accent']}; }}
+                QProgressBar#miniAxis {{ color: {colors['text']}; background: {colors['surface_alt']}; border: 1px solid {colors['border']}; border-radius: 3px; }}
+                QProgressBar#miniAxis::chunk {{ background: {colors['accent']}; border-radius: 2px; }}
+                QLabel#joystickLed[connectionState="connected"], QLabel#connectionStatus[connectionState="connected"] {{ color: #159653; font-weight: 700; }}
+                QLabel#joystickLed[connectionState="disconnected"], QLabel#connectionStatus[connectionState="disconnected"] {{ color: #d34852; font-weight: 700; }}
+                QLabel#connectionStatus[connectionState="warning"] {{ color: #b97911; font-weight: 700; }}
+                QTabWidget::pane {{ border: 1px solid {colors['border']}; background: {colors['surface']}; }}
+                QTabBar::tab {{ color: {colors['text']}; background: {colors['surface_alt']}; border: 1px solid {colors['border']}; padding: 8px 12px; }}
+                QTabBar::tab:selected {{ color: {colors['text']}; background: {colors['surface']}; border-bottom-color: {colors['accent']}; }}
+                QScrollBar:vertical, QScrollBar:horizontal {{ background: {colors['surface']}; border: 0; margin: 0; }}
+                QScrollBar:vertical {{ width: 12px; }} QScrollBar:horizontal {{ height: 12px; }}
+                QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{ background: {colors['scroll']}; border-radius: 5px; min-height: 24px; min-width: 24px; }}
+                QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+                QSplitter::handle {{ background: {colors['window']}; }}
+                QToolTip {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; }}
+                QMenu {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; }}
+                QMenu::item:selected {{ color: {colors['text']}; background: {colors['selection']}; }}
+            """)
+
+    def resizeEvent(self, event: object) -> None:
+        super().resizeEvent(event)
+        if not hasattr(self, "content_splitter"):
+            return
+        desired = Qt.Orientation.Vertical if self.width() < 930 else Qt.Orientation.Horizontal
+        if self.content_splitter.orientation() != desired:
+            self.content_splitter.setOrientation(desired)
+            if desired == Qt.Orientation.Vertical:
+                self.content_splitter.setSizes([340, 460])
+            else:
+                self.content_splitter.setSizes([400, max(500, self.width() - 450)])
+
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
         participant_ready = bool(
@@ -383,9 +503,9 @@ class MainWindow(QMainWindow):
 
     def _set_joystick_status(self, connected: bool, status: str) -> None:
         self.joystick_led.setText("● CONNECTED" if connected else "● DISCONNECTED")
-        self.joystick_led.setStyleSheet(
-            "font-weight: 700; color: #52d18a;" if connected else "font-weight: 700; color: #ed6262;"
-        )
+        self.joystick_led.setProperty("connectionState", "connected" if connected else "disconnected")
+        self.joystick_led.style().unpolish(self.joystick_led)
+        self.joystick_led.style().polish(self.joystick_led)
         self.joystick_status_text.setText(status)
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
@@ -439,7 +559,7 @@ class MainWindow(QMainWindow):
             self._refresh_test_choices()
             identity = account.get("participant_code") if role == "student" else account.get("username", "")
             self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
-            self.connection_status.setStyleSheet("font-weight: 700; color: #52d18a;")
+            self._set_connection_state("connected")
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
             self.advanced_button.setVisible(True)
@@ -487,7 +607,7 @@ class MainWindow(QMainWindow):
         self._refresh_test_choices()
 
         self.connection_status.setText("● WebDB DISCONNECTED · Offline mode")
-        self.connection_status.setStyleSheet("color: #d6a35b;")
+        self._set_connection_state("warning")
         self.connect_button.setVisible(True)
         self.disconnect_button.setVisible(False)
         self.advanced_button.setVisible(True)
@@ -524,19 +644,17 @@ class MainWindow(QMainWindow):
         self.test_combo.blockSignals(False)
         for button_mode, button in self.mode_buttons.items():
             button.setChecked(button_mode == mode)
-        logo = self.mode_logos.get(mode)
-        if logo is not None and not logo.isNull():
-            self.mode_preview.setPixmap(logo.scaled(260, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            self.mode_preview.setText("")
-        else:
-            self.mode_preview.setPixmap(QPixmap())
-            self.mode_preview.setText("SCoPE" if mode == "SCOPE" else "SimPLE")
         self.current_manifest = None
         if matching:
             self._load_selected_test()
         else:
             self.append_log(f"No active {mode} test version is available.")
-            self._update_run_availability()
+        self._update_run_availability()
+
+    def _set_connection_state(self, state: str) -> None:
+        self.connection_status.setProperty("connectionState", state)
+        self.connection_status.style().unpolish(self.connection_status)
+        self.connection_status.style().polish(self.connection_status)
 
     def _load_selected_test(self, _index: int = -1) -> None:
         if self.test_combo.currentIndex() < 0:

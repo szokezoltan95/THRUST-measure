@@ -207,7 +207,12 @@ class CommonSettingsPage(QWidget):
         self._stop_joystick_test(clear_text=False)
 
     def _browse_output_root(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select output root", self.output_root_edit.text().strip())
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select output root",
+            self.output_root_edit.text().strip(),
+            QFileDialog.Option.DontUseNativeDialog,
+        )
         if path:
             self.output_root_edit.setText(path)
 
