@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QAbstractItemView,
     QFrame,
     QFormLayout,
     QGridLayout,
@@ -34,6 +35,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -182,19 +185,29 @@ class MainWindow(QMainWindow):
         self.participant_combo.setEnabled(False)
         self.participant_combo.currentIndexChanged.connect(lambda _: self._update_run_availability())
         self.participant_combo.editTextChanged.connect(lambda _: self._update_run_availability())
+        self.participant_combo.currentIndexChanged.connect(lambda _: self._sync_selection_labels())
+        self.participant_combo.editTextChanged.connect(lambda _: self._sync_selection_labels())
+        self.participant_button = QPushButton("Select participant")
+        self.participant_button.setObjectName("selectionPicker")
+        self.participant_button.clicked.connect(self._choose_participant)
+        self.participant_combo.setVisible(False)
 
         self.test_combo = QComboBox()
         self.test_combo.setPlaceholderText("Connect to load test versions")
         self.test_combo.setEnabled(False)
         self.test_combo.currentIndexChanged.connect(self._load_selected_test)
+        self.test_combo.currentIndexChanged.connect(lambda _: self._sync_selection_labels())
+        self.test_button = QPushButton("Select test version")
+        self.test_button.setObjectName("selectionPicker")
+        self.test_button.clicked.connect(self._choose_test)
+        self.test_combo.setVisible(False)
         self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
 
         selection_group = QGroupBox("Measurement session")
         selection_group_layout = QVBoxLayout(selection_group)
-        selection_group_layout.addWidget(mode_switch)
         selection_form = QFormLayout()
-        selection_form.addRow("Participant ID:", self.participant_combo)
-        selection_form.addRow("Test version:", self.test_combo)
+        selection_form.addRow("Participant ID:", self.participant_button)
+        selection_form.addRow("Test version:", self.test_button)
         selection_group_layout.addLayout(selection_form)
 
         joystick_group = QGroupBox("Joystick link")
@@ -218,7 +231,6 @@ class MainWindow(QMainWindow):
 
         feedback_grid = QGridLayout()
         self.joystick_bars = {}
-        self.axis_selectors: dict[str, QComboBox] = {}
         self.axis_rows: dict[str, QWidget] = {}
         self._axis_spins = {
             "LX": self.common_page.lx_axis_spin,
@@ -235,11 +247,6 @@ class MainWindow(QMainWindow):
             axis_row_layout.setSpacing(7)
             label = QLabel(name)
             label.setMinimumWidth(48)
-            selector = QComboBox()
-            selector.setObjectName(f"axisSelector{name.title()}")
-            selector.setMinimumWidth(94)
-            selector.setMaximumWidth(112)
-            self.axis_selectors[name] = selector
             bar = QProgressBar()
             bar.setRange(-100, 100)
             bar.setValue(0)
@@ -248,13 +255,10 @@ class MainWindow(QMainWindow):
             bar.setObjectName("miniAxis")
             self.joystick_bars[name] = bar
             axis_row_layout.addWidget(label)
-            axis_row_layout.addWidget(selector)
             axis_row_layout.addWidget(bar, 1)
             feedback_grid.addWidget(axis_row, row, 0)
             self.axis_rows[name] = axis_row
-            selector.currentIndexChanged.connect(lambda _index, role=name: self._axis_selection_changed(role))
-            self._axis_spins[name].valueChanged.connect(lambda value, role=name: self._axis_spin_changed(role, value))
-        self._refresh_axis_selectors()
+            self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
         joystick_layout.addLayout(feedback_grid)
 
         self.run_button = QPushButton("Start measurement")
@@ -340,9 +344,10 @@ class MainWindow(QMainWindow):
         self.content_splitter.addWidget(log_panel)
         self.content_splitter.setStretchFactor(0, 1)
         self.content_splitter.setStretchFactor(1, 1)
-        self.content_splitter.setSizes([560, 560])
+        self.content_splitter.setSizes([800, 340])
 
         root.addLayout(title_row)
+        root.addWidget(mode_switch)
         root.addWidget(session_ribbon)
         root.addWidget(self.content_splitter, 1)
         root.addWidget(self.run_button)
@@ -404,41 +409,48 @@ class MainWindow(QMainWindow):
             action.setChecked(key == self.theme_mode)
         self._apply_theme()
 
-    def _axis_count(self) -> int:
-        joystick = self.common_page.joystick
-        if self.common_page.joystick_active and joystick is not None:
-            try:
-                return max(1, int(joystick.get_numaxes()))
-            except Exception:
-                pass
-        return 17
+    def _sync_selection_labels(self) -> None:
+        participant = self.participant_combo.currentText().strip()
+        self.participant_button.setText(participant or "Select participant")
+        test = self.test_combo.currentData()
+        self.test_button.setText(self.test_combo.currentText() if test else "Select test version")
 
-    def _refresh_axis_selectors(self) -> None:
-        if not hasattr(self, "axis_selectors"):
+    def _choose_from_table(self, title: str, combo: QComboBox, columns: tuple[str, ...]) -> None:
+        if combo.count() == 0:
             return
-        count = self._axis_count()
-        for role, selector in self.axis_selectors.items():
-            selected_axis = self._axis_spins[role].value()
-            selector.blockSignals(True)
-            selector.clear()
-            for axis_index in range(count):
-                selector.addItem(f"Axis {axis_index}", axis_index)
-            if selected_axis >= count:
-                selector.addItem(f"Axis {selected_axis} (unavailable)", selected_axis)
-            selector.setCurrentIndex(max(0, selector.findData(selected_axis)))
-            selector.blockSignals(False)
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.resize(560, min(520, 130 + combo.count() * 38))
+        table = QTableWidget(combo.count(), len(columns), dialog)
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.verticalHeader().setVisible(False)
+        for row in range(combo.count()):
+            value = combo.itemData(row)
+            if columns == ("Participant",):
+                values = (combo.itemText(row),)
+            elif isinstance(value, dict):
+                values = (str(value.get("name", "")), str(value.get("version", "")))
+            else:
+                values = (combo.itemText(row), "")
+            for column, text in enumerate(values):
+                table.setItem(row, column, QTableWidgetItem(text))
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)
+        if combo.currentIndex() >= 0:
+            table.selectRow(combo.currentIndex())
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(table)
+        table.cellClicked.connect(lambda row, _column: (combo.setCurrentIndex(row), dialog.accept()))
+        dialog.exec()
 
-    def _axis_selection_changed(self, role: str) -> None:
-        axis_index = self.axis_selectors[role].currentData()
-        if isinstance(axis_index, int):
-            self._axis_spins[role].setValue(axis_index)
-            self._update_joystick_feedback(self.common_page.latest_axis_values)
+    def _choose_participant(self) -> None:
+        self._choose_from_table("Choose participant", self.participant_combo, ("Participant",))
 
-    def _axis_spin_changed(self, role: str, value: int) -> None:
-        selector = self.axis_selectors.get(role)
-        if selector is None or selector.currentData() == value:
-            return
-        self._refresh_axis_selectors()
+    def _choose_test(self) -> None:
+        self._choose_from_table("Choose test version", self.test_combo, ("Test", "Version"))
 
     def _system_theme_changed(self, *_args: object) -> None:
         if self.theme_mode == "system":
@@ -507,6 +519,7 @@ class MainWindow(QMainWindow):
                 QPushButton:disabled {{ color: {colors['disabled_text']}; background: {colors['disabled']}; border-color: {colors['disabled']}; }}
                 QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
                 QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
+                QPushButton#selectionPicker {{ text-align: left; min-height: 30px; font-weight: 600; }}
                 QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 17px; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
@@ -541,8 +554,8 @@ class MainWindow(QMainWindow):
             if desired == Qt.Orientation.Vertical:
                 self.content_splitter.setSizes([340, 460])
             else:
-                half = max(1, self.content_splitter.width() // 2)
-                self.content_splitter.setSizes([half, half])
+                width = max(1, self.content_splitter.width())
+                self.content_splitter.setSizes([int(width * 0.70), int(width * 0.30)])
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
@@ -575,7 +588,6 @@ class MainWindow(QMainWindow):
         self.joystick_led.style().unpolish(self.joystick_led)
         self.joystick_led.style().polish(self.joystick_led)
         self.joystick_status_text.setText(status)
-        self._refresh_axis_selectors()
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
 
@@ -627,6 +639,7 @@ class MainWindow(QMainWindow):
             self.offline_mode = False
             self.config_source_combo.setCurrentIndex(0)
             self._refresh_test_choices()
+            self._sync_selection_labels()
             identity = account.get("participant_code") if role == "student" else account.get("username", "")
             self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
             self._set_connection_state("connected")
@@ -669,6 +682,7 @@ class MainWindow(QMainWindow):
         self.participant_combo.addItem("LOCAL")
         self.participant_combo.setCurrentText("LOCAL")
         self.participant_combo.setEnabled(True)
+        self._sync_selection_labels()
 
         self.available_tests = [
             self._offline_manifest("SCOPE")["test"],
@@ -712,6 +726,7 @@ class MainWindow(QMainWindow):
         self.test_combo.setPlaceholderText("No available versions for this mode")
         self.test_combo.setEnabled(bool(matching))
         self.test_combo.blockSignals(False)
+        self._sync_selection_labels()
         for button_mode, button in self.mode_buttons.items():
             button.setChecked(button_mode == mode)
         self.axis_rows["RESET"].setVisible(mode == "SIMPLE")
