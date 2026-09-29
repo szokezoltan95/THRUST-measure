@@ -14,6 +14,7 @@ from PyQt6.QtGui import QActionGroup, QColor, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -32,7 +33,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStackedWidget,
-    QSplitter,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -118,8 +118,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
-        self.resize(760, 900)
-        self.setMinimumSize(640, 600)
+        self.resize(620, 900)
+        self.setMinimumSize(500, 700)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
         if self.theme_mode not in {"system", "dark", "light"}:
@@ -130,6 +130,9 @@ class MainWindow(QMainWindow):
         self.current_manifest: dict[str, Any] | None = None
         self.available_tests: list[dict[str, Any]] = []
         self.offline_mode = True
+        self.log_history: list[str] = []
+        self.log_dialog: QDialog | None = None
+        self.log_view: QPlainTextEdit | None = None
 
         self.common_page = CommonSettingsPage()
         self.scope_page = ScopeSettingsPage()
@@ -206,8 +209,21 @@ class MainWindow(QMainWindow):
         selection_group_layout = QVBoxLayout(selection_group)
         selection_group_layout.addWidget(mode_switch)
         selection_form = QFormLayout()
+        self.test_row_label = QLabel("Test version:")
+        self.test_row_widget = QWidget()
+        self.test_row_layout = QHBoxLayout(self.test_row_widget)
+        self.test_row_layout.setContentsMargins(0, 0, 0, 0)
+        self.test_row_layout.addWidget(self.test_button)
+        self.local_settings_button = QPushButton("Local settings")
+        self.local_settings_button.setObjectName("selectionPicker")
+        self.local_settings_button.clicked.connect(self._open_advanced)
+        self.local_settings_button.setVisible(False)
+        self.test_row_layout.addWidget(self.local_settings_button)
         selection_form.addRow("Participant ID:", self.participant_button)
-        selection_form.addRow("Test version:", self.test_button)
+        selection_form.addRow(self.test_row_label, self.test_row_widget)
+        self.create_local_graphs_check = QCheckBox("Create local graphs")
+        self.create_local_graphs_check.setChecked(False)
+        selection_form.addRow("Session options:", self.create_local_graphs_check)
         selection_group_layout.addLayout(selection_form)
 
         joystick_group = QGroupBox("Joystick link")
@@ -223,13 +239,7 @@ class MainWindow(QMainWindow):
         self.joystick_button.setProperty("state", "disconnected")
         self.joystick_button.clicked.connect(self._choose_joystick)
         self.joystick_button.setText("Select Joystick")
-        self.joystick_state_label = QLabel("DISCONNECTED")
-        self.joystick_state_label.setObjectName("joystickState")
-        self.joystick_state_label.setProperty("state", "disconnected")
-        self.joystick_state_label.setFixedWidth(112)
-        self.joystick_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         joystick_row.addWidget(self.joystick_button, 1)
-        joystick_row.addWidget(self.joystick_state_label)
         joystick_layout.addLayout(joystick_row)
 
         feedback_grid = QGridLayout()
@@ -260,13 +270,13 @@ class MainWindow(QMainWindow):
             bar.setObjectName("miniAxis")
             self.joystick_bars[name] = bar
             axis_row_layout.addWidget(label)
-            if name == "BREAK":
+            if name == "RESET":
                 stack = QStackedWidget()
                 stack.setFixedHeight(14)
                 placeholder = QLabel("—")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 placeholder.setObjectName("axisPlaceholder")
-                placeholder.setToolTip("BREAK axis is not active")
+                placeholder.setToolTip("RESET visualization is not used in SCoPE")
                 stack.addWidget(bar)
                 stack.addWidget(placeholder)
                 stack.setCurrentWidget(placeholder)
@@ -325,15 +335,6 @@ class MainWindow(QMainWindow):
             self.measurement_status[key] = indicator
             status_row.addWidget(indicator, 1)
 
-        self.advanced_button = QPushButton("Settings")
-        self.advanced_button.clicked.connect(self._open_advanced)
-
-        self.log_output = QPlainTextEdit()
-        self.log_output.setReadOnly(True)
-        self.log_output.setObjectName("sessionLog")
-        self.log_output.setMinimumHeight(0)
-        self.log_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
         central = QWidget()
         root = QVBoxLayout(central)
         root.setContentsMargins(20, 16, 20, 16)
@@ -363,6 +364,10 @@ class MainWindow(QMainWindow):
             self.theme_actions[value] = action
         self.appearance_button.setMenu(self.theme_menu)
         title_row.addWidget(self.appearance_button)
+        self.logs_button = QPushButton("Logs")
+        self.logs_button.setObjectName("logsButton")
+        self.logs_button.clicked.connect(self._open_logs)
+        title_row.insertWidget(1, self.logs_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -370,7 +375,6 @@ class MainWindow(QMainWindow):
         session_actions_layout.addStretch()
         session_actions_layout.addWidget(self.connect_button)
         session_actions_layout.addWidget(self.disconnect_button)
-        session_actions_layout.addWidget(self.advanced_button)
 
         session_ribbon = QGroupBox("Measurement session")
         session_ribbon_layout = QHBoxLayout(session_ribbon)
@@ -386,26 +390,16 @@ class MainWindow(QMainWindow):
         controls_layout.addStretch(1)
         controls_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        log_panel = QGroupBox("Session log")
-        log_panel.setObjectName("sessionLogPanel")
-        log_layout = QVBoxLayout(log_panel)
-        log_layout.setContentsMargins(8, 12, 8, 8)
-        log_layout.setSpacing(0)
-        log_layout.addWidget(self.log_output, 1)
-
-        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.content_splitter.setChildrenCollapsible(False)
-        self.content_splitter.addWidget(controls_panel)
-        self.content_splitter.addWidget(log_panel)
-        self.content_splitter.setStretchFactor(0, 1)
-        self.content_splitter.setStretchFactor(1, 1)
-        self.content_splitter.setSizes([360, 360])
-
         root.addLayout(title_row)
         root.addWidget(session_ribbon)
-        root.addWidget(self.content_splitter, 1)
+        root.addWidget(controls_panel, 1)
         root.addWidget(self.run_button)
         root.addLayout(status_row)
+        self.footer_log_label = QLabel("Ready")
+        self.footer_log_label.setObjectName("footerLog")
+        self.footer_log_label.setFixedHeight(24)
+        self.footer_log_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        root.addWidget(self.footer_log_label)
 
         self.setCentralWidget(central)
         self._apply_theme()
@@ -606,8 +600,8 @@ class MainWindow(QMainWindow):
                 QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 22px; padding: 0; }}
                 QToolButton#appearanceButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; background: {colors['surface_alt']}; }}
                 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
-                QPlainTextEdit#sessionLog {{ background: {colors['log']}; border: none; font-family: monospace; font-size: 12px; }}
-                QGroupBox#sessionLogPanel {{ background: {colors['log']}; border: 1px solid {colors['log']}; }}
+                QPlainTextEdit#detailedLog {{ background: {colors['log']}; font-family: monospace; font-size: 12px; }}
+                QLabel#footerLog {{ color: {colors['muted']}; padding-left: 4px; }}
                 QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
                 QComboBox QAbstractItemView {{ color: {colors['text']}; background: {colors['surface']}; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; border: 1px solid {colors['border']}; outline: 0; }}
                 QPushButton {{ color: {colors['text']}; background: {colors['button']}; border: 1px solid {colors['border']}; border-radius: 5px; padding: 7px 12px; }}
@@ -619,8 +613,8 @@ class MainWindow(QMainWindow):
                 QPushButton#selectionPicker {{ text-align: left; min-height: 30px; font-weight: 600; }}
                 QPushButton#joystickButton {{ text-align: left; min-height: 30px; font-weight: 600; }}
                 QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
-                QLabel#joystickState[state="connected"] {{ color: #20b865; font-weight: 800; }}
-                QLabel#joystickState[state="disconnected"] {{ color: #ef5962; font-weight: 800; }}
+                QPushButton#joystickButton[state="connected"] {{ color: #20b865; }}
+                QPushButton#joystickButton[state="disconnected"] {{ color: #ef5962; }}
                 QPushButton#axisAssignButton {{ text-align: left; min-height: 30px; padding-left: 9px; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
                 QLabel#measurementStatus {{ background: transparent; border: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
@@ -644,25 +638,10 @@ class MainWindow(QMainWindow):
                 QScrollBar:vertical {{ width: 12px; }} QScrollBar:horizontal {{ height: 12px; }}
                 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{ background: {colors['scroll']}; border-radius: 5px; min-height: 24px; min-width: 24px; }}
                 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
-                QSplitter::handle {{ background: {colors['window']}; }}
                 QToolTip {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; }}
                 QMenu {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; }}
                 QMenu::item:selected {{ color: {colors['text']}; background: {colors['selection']}; }}
             """)
-
-    def resizeEvent(self, event: object) -> None:
-        super().resizeEvent(event)
-        if not hasattr(self, "content_splitter"):
-            return
-        desired = Qt.Orientation.Vertical if self.width() < 700 else Qt.Orientation.Horizontal
-        if self.content_splitter.orientation() != desired:
-            self.content_splitter.setOrientation(desired)
-            if desired == Qt.Orientation.Vertical:
-                self.content_splitter.setSizes([340, 460])
-            else:
-                width = max(1, self.content_splitter.width())
-                half = width // 2
-                self.content_splitter.setSizes([half, width - half])
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
@@ -713,10 +692,10 @@ class MainWindow(QMainWindow):
             self.joystick_button.setText(device_name)
         else:
             self.joystick_button.setText("Select Joystick")
-        self.joystick_state_label.setText("CONNECTED" if connected else "DISCONNECTED")
-        self.joystick_state_label.setProperty("state", "connected" if connected else "disconnected")
-        self.joystick_state_label.style().unpolish(self.joystick_state_label)
-        self.joystick_state_label.style().polish(self.joystick_state_label)
+        self.joystick_button.setText(f"{device_name} · CONNECTED") if connected else self.joystick_button.setText("Select Joystick · DISCONNECTED")
+        self.joystick_button.setProperty("state", "connected" if connected else "disconnected")
+        self.joystick_button.style().unpolish(self.joystick_button)
+        self.joystick_button.style().polish(self.joystick_button)
         self._refresh_axis_selectors()
         self._update_joystick_feedback(self.common_page.latest_axis_values)
         if hasattr(self, "run_button"):
@@ -728,8 +707,11 @@ class MainWindow(QMainWindow):
         for role, bar in self.joystick_bars.items():
             axis_index = self._axis_spins[role].value()
             available = self.common_page.joystick_active and 0 <= axis_index < len(values)
-            if role == "BREAK":
-                self.axis_bar_stacks[role].setCurrentWidget(bar if available else self.axis_placeholders[role])
+            if role == "RESET":
+                is_simple = str(self.program_selector.currentData() or "SCOPE") == "SIMPLE"
+                self.axis_bar_stacks[role].setCurrentWidget(
+                    bar if is_simple and available else self.axis_placeholders[role]
+                )
             if available:
                 value = float(values[axis_index])
                 bar.setValue(int(max(-1.0, min(1.0, value)) * 100))
@@ -780,7 +762,7 @@ class MainWindow(QMainWindow):
             self._set_connection_state("connected")
             self.connect_button.setVisible(False)
             self.disconnect_button.setVisible(True)
-            self.advanced_button.setVisible(True)
+            self._update_selection_mode_controls()
             if self.advanced_dialog is not None:
                 self.advanced_dialog.set_offline_visible(False)
             self.append_log(f"Loaded {len(tests)} active tests for {role or 'user'}.")
@@ -829,7 +811,7 @@ class MainWindow(QMainWindow):
         self._set_connection_state("warning")
         self.connect_button.setVisible(True)
         self.disconnect_button.setVisible(False)
-        self.advanced_button.setVisible(True)
+        self._update_selection_mode_controls()
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(True)
         self._update_run_availability()
@@ -864,8 +846,9 @@ class MainWindow(QMainWindow):
         self._sync_selection_labels()
         for button_mode, button in self.mode_buttons.items():
             button.setChecked(button_mode == mode)
-        self.axis_rows["RESET"].setVisible(mode == "SIMPLE")
-        self.axis_selector_rows["RESET"].setVisible(mode == "SIMPLE")
+        self.axis_bar_stacks["RESET"].setCurrentWidget(
+            self.joystick_bars["RESET"] if mode == "SIMPLE" else self.axis_placeholders["RESET"]
+        )
         self.current_manifest = None
         if matching:
             self._load_selected_test()
@@ -975,6 +958,8 @@ class MainWindow(QMainWindow):
             self.advanced_dialog.set_measurement_mode(is_simple)
 
     def _open_advanced(self) -> None:
+        if not self.offline_mode:
+            return
         if self.advanced_dialog is None:
             self.advanced_dialog = AdvancedSettingsDialog(self.common_page, self.scope_page, self.simple_page, self)
         self.advanced_dialog.set_offline_visible(self.offline_mode)
@@ -1004,6 +989,10 @@ class MainWindow(QMainWindow):
                 return
 
             runtime = self.common_page.export_common_dict()
+            runtime["debug_output"] = True
+            create_local_graphs = self.create_local_graphs_check.isChecked()
+            runtime["save_graph_pdf"] = create_local_graphs
+            runtime["auto_open_graph"] = create_local_graphs
             selected_joystick = self.joystick_selector.currentData()
             runtime["joystick_index"] = int(selected_joystick) if isinstance(selected_joystick, int) and selected_joystick >= 0 else 0
             if is_simple:
@@ -1062,6 +1051,8 @@ class MainWindow(QMainWindow):
                 config.reset_axis = int(runtime["reset_axis"])
                 config.user = participant_code
                 config.profile_name = profile_name
+                config.debug_output = True
+                config.show_graph = create_local_graphs
                 config.validate()
                 self.append_log(
                     f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
@@ -1129,4 +1120,40 @@ class MainWindow(QMainWindow):
             pass
 
     def append_log(self, message: str) -> None:
-        self.log_output.appendPlainText(message)
+        now = datetime.now().astimezone()
+        entry = f"[{now:%Y-%m-%d %H:%M:%S}] {message}"
+        self.log_history.append(entry)
+        if self.log_view is not None:
+            self.log_view.appendPlainText(entry)
+        compact = " ".join(message.split())
+        if len(compact) > 150:
+            compact = compact[:147] + "…"
+        self.footer_log_label.setText(f"{now:%H:%M:%S} · {compact}")
+        self.footer_log_label.setToolTip(entry)
+
+    def _open_logs(self) -> None:
+        if self.log_dialog is None:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("THRUST · detailed logs")
+            dialog.resize(900, 600)
+            layout = QVBoxLayout(dialog)
+            self.log_view = QPlainTextEdit()
+            self.log_view.setObjectName("detailedLog")
+            self.log_view.setReadOnly(True)
+            self.log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+            layout.addWidget(self.log_view)
+            close_button = QPushButton("Close")
+            close_button.clicked.connect(dialog.close)
+            layout.addWidget(close_button)
+            self.log_dialog = dialog
+            for entry in self.log_history:
+                self.log_view.appendPlainText(entry)
+        self.log_dialog.show()
+        self.log_dialog.raise_()
+        self.log_dialog.activateWindow()
+
+    def _update_selection_mode_controls(self) -> None:
+        offline = self.offline_mode
+        self.test_button.setVisible(not offline)
+        self.local_settings_button.setVisible(offline)
+        self.test_row_label.setText("Local settings:" if offline else "Test version:")
