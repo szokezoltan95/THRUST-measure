@@ -32,6 +32,9 @@ gui = [
 [project.scripts]
 thrust = "thrust.app:main"
 
+[project.gui-scripts]
+thrust-measure = "thrust.app:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["thrust*", "scope*", "simple*"]

@@ -112,28 +112,13 @@ Profiles allow reproducible experiments and easy switching between setups.
 
 ---
 
-## Install and run
+## Install and run on Windows
 
-THRUST is installable into a Python virtual environment. Install it once from the repository root:
+Clone the repository, then double-click `install_thrust.bat` in its root folder. The installer reports each step, selects the newest supported Python 3.11+ installation it can find (including installations registered with the `py` launcher), creates `.venv`, and installs the GUI dependencies declared in `pyproject.toml`.
 
-```bat
-py -m venv venv
-venv\Scripts\activate.bat
-python -m pip install --upgrade pip
-python -m pip install -e ".[gui]"
-```
+It creates a **THRUST-measure** shortcut on the Windows Desktop. The shortcut uses the `thrust-measure` GUI entry point, so it opens the application without showing a Command Prompt window. The installation is editable: after pulling source changes, run the desktop shortcut again; rerun `install_thrust.bat` after dependency changes.
 
-After installation, start the measurement client with:
-
-```bat
-thrust
-```
-
-The `thrust` command is available whenever this virtual environment is active, regardless of the current working directory. In a new Command Prompt, activate it using the full path to `venv\Scripts\activate.bat`, then run `thrust`.
-
-The editable install keeps the launcher connected to the checked-out source tree, so code updates do not require reinstalling the package. Re-run `python -m pip install -e ".[gui]"` after pulling changes that modify dependencies.
-
-For compatibility, `python main.py` and `run_thrust.bat` remain available.
+The traditional console entry point remains available as `thrust` inside the virtual environment for development and troubleshooting.
 
 
 

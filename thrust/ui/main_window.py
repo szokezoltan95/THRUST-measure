@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
         status_row = QHBoxLayout()
         status_row.setContentsMargins(0, 0, 0, 0)
         status_row.setSpacing(8)
-        for key in ("participant", "test", "joystick"):
+        for key in ("webdb", "participant", "test", "joystick"):
             indicator = QLabel()
             indicator.setObjectName("measurementStatus")
             indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -664,6 +664,7 @@ class MainWindow(QMainWindow):
                 QLabel#measurementStatus {{ background: transparent; border: none; font-size: 8pt; font-weight: 700; letter-spacing: .3px; }}
                 QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
                 QLabel#measurementStatus[state="error"] {{ color: #ef5962; }}
+                QLabel#measurementStatus[state="warning"] {{ color: #e59b24; }}
                 QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 13pt; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
@@ -697,16 +698,23 @@ class MainWindow(QMainWindow):
         test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
         self.run_button.setEnabled(connected and test_ready and participant_ready and
                                    (self.offline_mode or self._catalogue_connection_ok))
+        webdb_ready = not self.offline_mode and self._catalogue_connection_ok
+        self._set_status_indicator(
+            "webdb", webdb_ready, "WEBDB · CONNECTED", "WEBDB · OFFLINE",
+            state="ready" if webdb_ready else "warning",
+        )
         self._set_status_indicator("participant", participant_ready, "PARTICIPANT · OK", "SELECT PARTICIPANT")
         self._set_status_indicator("test", test_ready, "TEST · OK", "SELECT TEST")
         self._set_status_indicator("joystick", connected, "JOYSTICK · OK", "JOYSTICK DISCONNECTED")
 
-    def _set_status_indicator(self, key: str, ready: bool, good_text: str, error_text: str) -> None:
+    def _set_status_indicator(
+        self, key: str, ready: bool, good_text: str, error_text: str, *, state: str | None = None
+    ) -> None:
         indicator = self.measurement_status.get(key)
         if indicator is None:
             return
         indicator.setText(good_text if ready else error_text)
-        indicator.setProperty("state", "ready" if ready else "error")
+        indicator.setProperty("state", state or ("ready" if ready else "error"))
         indicator.style().unpolish(indicator)
         indicator.style().polish(indicator)
 
