@@ -1,56 +1,29 @@
+import csv
+import tempfile
 import unittest
+from pathlib import Path
 
-import numpy as np
-import pandas as pd
-
-from scope.scope_metrics import evaluate_step_response
+from thrust.analysis.scope_log import analyze_scope_log
 
 
-class ScopeStepResponseTests(unittest.TestCase):
-    def test_does_not_wrap_final_request_into_a_fake_event_at_sample_zero(self):
-        request = np.full(300, 500.0)
-        request[50:] = -500.0
-        response = np.full(300, 200.0)
-        response[52:] = -800.0
-        frame = pd.DataFrame({"LXRQ": request, "LX": response})
+class ScopeAnalysisTests(unittest.TestCase):
+    def test_analyzes_raw_scope_tsv_without_optional_numeric_packages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "scope.tsv"
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.writer(handle, delimiter="\t")
+                writer.writerow(["TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ", "ACTION_ID", "IN_RANGE"])
+                for index in range(200):
+                    request = -500 if index < 50 else 500
+                    response = -400 if index < 53 else 400
+                    writer.writerow([index / 100, response, 0, 0, 0, request, 0, 0, 0, 1, int(index > 55)])
+            result = analyze_scope_log(path)
 
-        segments, median, mean, std = evaluate_step_response(
-            frame, "LX", "LXRQ", sampling_hz=100
-        )
-
-        self.assertEqual(len(segments), 1)
-        self.assertAlmostEqual(median[0], 0.0)
-        self.assertAlmostEqual(median[2], 1.0)
-        self.assertAlmostEqual(mean[2], 1.0)
-        self.assertAlmostEqual(std[2], 0.0)
-
-    def test_excludes_unaligned_startup_and_uses_response_baseline_per_axis_step(self):
-        request = np.full(300, -500.0)
-        request[50:150] = 500.0
-        response = np.full(300, 100.0)
-        response[52:152] = 1100.0
-
-        # A simultaneous change on another axis must not alter the RX samples
-        # selected for RX's independent response calculation.
-        other_request = np.zeros(300)
-        other_request[50:] = 900.0
-        frame = pd.DataFrame({
-            "RXRQ": request,
-            "RX": response,
-            "LXRQ": other_request,
-        })
-
-        segments, median, mean, std = evaluate_step_response(
-            frame, "RX", "RXRQ", sampling_hz=100
-        )
-
-        self.assertEqual(len(segments), 2)
-        self.assertAlmostEqual(median[0], 0.0)
-        self.assertAlmostEqual(median[2], 1.0)
-        self.assertAlmostEqual(mean[0], 0.0)
-        self.assertAlmostEqual(mean[2], 1.0)
-        self.assertAlmostEqual(std[2], 0.0)
-        self.assertTrue(np.all(np.abs(mean[:10]) <= 1.0))
+        self.assertEqual(result["schema_version"], "thrust-analysis-v1")
+        self.assertEqual(result["sample_count"], 200)
+        self.assertEqual(result["normalized_step_response"]["channels"]["LX"]["transition_count"], 1)
+        self.assertEqual(result["events"][0]["action_id"], 1)
+        self.assertIn("LX.rise_time_s", result["metrics"])
 
 
 if __name__ == "__main__":
