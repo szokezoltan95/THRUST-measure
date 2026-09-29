@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
-        self.resize(1200, 820)
+        self.resize(840, 820)
         self.setMinimumSize(760, 600)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
@@ -260,6 +260,32 @@ class MainWindow(QMainWindow):
             self.axis_rows[name] = axis_row
             self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
         joystick_layout.addLayout(feedback_grid)
+
+        self.axis_selectors: dict[str, QComboBox] = {}
+        self.axis_selector_rows: dict[str, QWidget] = {}
+        mapping_group = QGroupBox("Axis assignment")
+        mapping_grid = QGridLayout(mapping_group)
+        mapping_grid.setContentsMargins(8, 8, 8, 8)
+        mapping_grid.setHorizontalSpacing(14)
+        mapping_grid.setVerticalSpacing(6)
+        for index, name in enumerate(("LX", "LY", "RY", "RX", "BREAK", "RESET")):
+            row, column = divmod(index, 2)
+            mapping_cell = QWidget()
+            cell_layout = QHBoxLayout(mapping_cell)
+            cell_layout.setContentsMargins(0, 0, 0, 0)
+            cell_layout.setSpacing(6)
+            cell_layout.addWidget(QLabel(name))
+            selector = QComboBox()
+            selector.setObjectName(f"axisSelector{name.title()}")
+            selector.setMinimumWidth(75)
+            self.axis_selectors[name] = selector
+            cell_layout.addWidget(selector, 1)
+            mapping_grid.addWidget(mapping_cell, row, column)
+            self.axis_selector_rows[name] = mapping_cell
+            selector.currentIndexChanged.connect(lambda _index, role=name: self._axis_selection_changed(role))
+            self._axis_spins[name].valueChanged.connect(lambda value, role=name: self._axis_spin_changed(role, value))
+        self._refresh_axis_selectors()
+        joystick_layout.addWidget(mapping_group)
 
         self.run_button = QPushButton("Start measurement")
         self.run_button.setObjectName("startMeasurement")
@@ -409,6 +435,42 @@ class MainWindow(QMainWindow):
             action.setChecked(key == self.theme_mode)
         self._apply_theme()
 
+    def _axis_count(self) -> int:
+        joystick = self.common_page.joystick
+        if self.common_page.joystick_active and joystick is not None:
+            try:
+                return max(1, int(joystick.get_numaxes()))
+            except Exception:
+                pass
+        return 17
+
+    def _refresh_axis_selectors(self) -> None:
+        if not hasattr(self, "axis_selectors"):
+            return
+        count = self._axis_count()
+        for role, selector in self.axis_selectors.items():
+            selected_axis = self._axis_spins[role].value()
+            selector.blockSignals(True)
+            selector.clear()
+            for axis_index in range(count):
+                selector.addItem(f"Axis {axis_index}", axis_index)
+            if selected_axis >= count:
+                selector.addItem(f"Axis {selected_axis} (unavailable)", selected_axis)
+            selector.setCurrentIndex(max(0, selector.findData(selected_axis)))
+            selector.blockSignals(False)
+
+    def _axis_selection_changed(self, role: str) -> None:
+        axis_index = self.axis_selectors[role].currentData()
+        if isinstance(axis_index, int):
+            self._axis_spins[role].setValue(axis_index)
+            self._update_joystick_feedback(self.common_page.latest_axis_values)
+
+    def _axis_spin_changed(self, role: str, value: int) -> None:
+        selector = self.axis_selectors.get(role)
+        if selector is None or selector.currentData() == value:
+            return
+        self._refresh_axis_selectors()
+
     def _sync_selection_labels(self) -> None:
         participant = self.participant_combo.currentText().strip()
         self.participant_button.setText(participant or "Select participant")
@@ -548,7 +610,7 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if not hasattr(self, "content_splitter"):
             return
-        desired = Qt.Orientation.Vertical if self.width() < 930 else Qt.Orientation.Horizontal
+        desired = Qt.Orientation.Vertical if self.width() < 700 else Qt.Orientation.Horizontal
         if self.content_splitter.orientation() != desired:
             self.content_splitter.setOrientation(desired)
             if desired == Qt.Orientation.Vertical:
@@ -588,6 +650,7 @@ class MainWindow(QMainWindow):
         self.joystick_led.style().unpolish(self.joystick_led)
         self.joystick_led.style().polish(self.joystick_led)
         self.joystick_status_text.setText(status)
+        self._refresh_axis_selectors()
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
 
@@ -730,6 +793,7 @@ class MainWindow(QMainWindow):
         for button_mode, button in self.mode_buttons.items():
             button.setChecked(button_mode == mode)
         self.axis_rows["RESET"].setVisible(mode == "SIMPLE")
+        self.axis_selector_rows["RESET"].setVisible(mode == "SIMPLE")
         self.current_manifest = None
         if matching:
             self._load_selected_test()
