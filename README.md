@@ -142,3 +142,24 @@ Current focus:
 
 Research / academic use.
 License to be defined.
+
+
+## Import old or offline measurements
+
+The standalone importer searches recursively in `Documents/THRUST/import`. Put historical logs there and double-click `import_measurements.bat`. It recognizes SCoPE and SimPLE filenames containing a five-character participant ID, runs the same SCoPE/SimPLE analysis functions as THRUST-measure, creates missing participants, reuses a matching test code/version when possible, and otherwise creates a `LEGACY_…` test version. It uploads the compressed raw log and analysis to WebDB; the original local log is kept unchanged.
+
+Try a preview first:
+
+```bat
+import_measurements.bat --dry-run
+```
+
+To keep the tool running and automatically upload completed offline measurements, start:
+
+```bat
+import_measurements.bat --watch
+```
+
+Watch mode checks the import folder and `Documents/THRUST/output` every five seconds. It waits until a file has stopped changing, then analyzes and uploads it. Stop it with `Ctrl+C`. The importer asks for the WebDB username and password; alternatively set `THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD` in the environment. Use an Admin or SuperAdmin account so it can create missing participants, or a Researcher account when every participant already exists. The WebDB URL can be changed with `--webdb`.
+
+Analysis JSON reports are saved under `.thrust-import/analysis` in the import workspace. Uploaded files are detected by their raw-content hash, so a later scan skips an identical log already in WebDB.
