@@ -191,6 +191,7 @@ class MainWindow(QMainWindow):
         self.participant_combo.editTextChanged.connect(lambda _: self._sync_selection_labels())
         self.participant_button = QPushButton("Select participant")
         self.participant_button.setObjectName("selectionPicker")
+        self.participant_button.setFixedHeight(34)
         self.participant_button.clicked.connect(self._choose_participant)
         self.participant_combo.setVisible(False)
 
@@ -201,6 +202,7 @@ class MainWindow(QMainWindow):
         self.test_combo.currentIndexChanged.connect(lambda _: self._sync_selection_labels())
         self.test_button = QPushButton("Select test version")
         self.test_button.setObjectName("selectionPicker")
+        self.test_button.setFixedHeight(34)
         self.test_button.clicked.connect(self._choose_test)
         self.test_combo.setVisible(False)
         self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
@@ -216,6 +218,7 @@ class MainWindow(QMainWindow):
         self.test_row_layout.addWidget(self.test_button)
         self.local_settings_button = QPushButton("Local settings")
         self.local_settings_button.setObjectName("selectionPicker")
+        self.local_settings_button.setFixedHeight(34)
         self.local_settings_button.clicked.connect(self._open_advanced)
         self.local_settings_button.setVisible(False)
         self.test_row_layout.addWidget(self.local_settings_button)
@@ -235,7 +238,7 @@ class MainWindow(QMainWindow):
         self.joystick_selector.setVisible(False)
         self.joystick_button = QPushButton("SELECT JOYSTICK · DISCONNECTED")
         self.joystick_button.setObjectName("joystickButton")
-        self.joystick_button.setFixedHeight(36)
+        self.joystick_button.setFixedHeight(30)
         self.joystick_button.setProperty("state", "disconnected")
         self.joystick_button.clicked.connect(self._choose_joystick)
         self.joystick_button.setText("Select Joystick")
@@ -297,6 +300,7 @@ class MainWindow(QMainWindow):
         mapping_grid.setContentsMargins(8, 8, 8, 8)
         mapping_grid.setHorizontalSpacing(14)
         mapping_grid.setVerticalSpacing(6)
+        mapping_group.setMinimumHeight(148)
         for index, name in enumerate(("LX", "LY", "RY", "RX", "BREAK", "RESET")):
             row, column = divmod(index, 2)
             mapping_cell = QWidget()
@@ -306,7 +310,8 @@ class MainWindow(QMainWindow):
             cell_layout.addWidget(QLabel(name))
             selector = QPushButton(f"Axis {self._axis_spins[name].value()}")
             selector.setObjectName("axisAssignButton")
-            selector.setFixedWidth(84)
+            selector.setFixedSize(96, 34)
+            mapping_grid.setRowMinimumHeight(row, 36)
             self.axis_selector_buttons[name] = selector
             cell_layout.addWidget(selector)
             mapping_grid.addWidget(mapping_cell, row, column)
@@ -350,7 +355,6 @@ class MainWindow(QMainWindow):
         self.appearance_button.setText("◐")
         self.appearance_button.setToolTip("Choose system, dark or light colors")
         self.appearance_button.setAccessibleName("Appearance")
-        self.appearance_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.theme_menu = QMenu(self.appearance_button)
         self.theme_actions: dict[str, Any] = {}
         self.theme_action_group = QActionGroup(self.theme_menu)
@@ -362,12 +366,12 @@ class MainWindow(QMainWindow):
             self.theme_action_group.addAction(action)
             action.triggered.connect(lambda _checked=False, selected=value: self._set_theme_mode(selected))
             self.theme_actions[value] = action
-        self.appearance_button.setMenu(self.theme_menu)
+        self.appearance_button.clicked.connect(self._show_theme_menu)
         title_row.addWidget(self.appearance_button)
         self.logs_button = QPushButton("Logs")
         self.logs_button.setObjectName("logsButton")
         self.logs_button.clicked.connect(self._open_logs)
-        title_row.insertWidget(1, self.logs_button)
+        title_row.addWidget(self.logs_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -537,10 +541,34 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _choose_participant(self) -> None:
+        if self.offline_mode:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Participant ID")
+            dialog.setMinimumWidth(340)
+            layout = QVBoxLayout(dialog)
+            edit = QLineEdit(self.participant_combo.currentText())
+            edit.setPlaceholderText("Enter participant ID")
+            layout.addWidget(edit)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            layout.addWidget(buttons)
+            edit.returnPressed.connect(dialog.accept)
+            if dialog.exec() == QDialog.DialogCode.Accepted and edit.text().strip():
+                self.participant_combo.setCurrentText(edit.text().strip())
+                self._sync_selection_labels()
+            return
         self._choose_from_table("Choose participant", self.participant_combo, ("Participant",))
 
     def _choose_test(self) -> None:
         self._choose_from_table("Choose test version", self.test_combo, ("Test", "Version"))
+
+    def _show_theme_menu(self) -> None:
+        self.theme_menu.exec(
+            self.appearance_button.mapToGlobal(self.appearance_button.rect().bottomLeft())
+        )
 
     def _system_theme_changed(self, *_args: object) -> None:
         if self.theme_mode == "system":
@@ -610,12 +638,12 @@ class MainWindow(QMainWindow):
                 QPushButton:disabled {{ color: {colors['disabled_text']}; background: {colors['disabled']}; border-color: {colors['disabled']}; }}
                 QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
                 QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
-                QPushButton#selectionPicker {{ text-align: left; min-height: 30px; font-weight: 600; }}
-                QPushButton#joystickButton {{ text-align: left; min-height: 30px; font-weight: 600; }}
+                QPushButton#selectionPicker {{ text-align: left; min-height: 24px; padding: 3px 10px; font-weight: 600; }}
+                QPushButton#joystickButton {{ text-align: center; min-height: 24px; padding: 3px 8px; font-weight: 600; }}
                 QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
                 QPushButton#joystickButton[state="connected"] {{ color: #20b865; }}
                 QPushButton#joystickButton[state="disconnected"] {{ color: #ef5962; }}
-                QPushButton#axisAssignButton {{ text-align: left; min-height: 30px; padding-left: 9px; }}
+                QPushButton#axisAssignButton {{ text-align: center; min-height: 30px; padding: 2px 5px; font-weight: 600; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
                 QLabel#measurementStatus {{ background: transparent; border: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
                 QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
