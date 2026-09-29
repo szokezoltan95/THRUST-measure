@@ -50,8 +50,6 @@ class CommonSettingsPage(QWidget):
         self.fullscreen_check.setChecked(True)
         self.topmost_check = QCheckBox()
         self.topmost_check.setChecked(True)
-        self.debug_output_check = QCheckBox()
-        self.debug_output_check.setChecked(False)
 
         self.joystick_index_spin = QSpinBox()
         self.joystick_index_spin.setRange(0, 16)
@@ -86,8 +84,6 @@ class CommonSettingsPage(QWidget):
         self.auto_open_graph_check.setChecked(True)
         self.run_evaluation_check = QCheckBox()
         self.run_evaluation_check.setChecked(True)
-        self.show_graph_check = QCheckBox()
-        self.show_graph_check.setChecked(False)
 
         self.lx_axis_spin = QSpinBox()
         self.ly_axis_spin = QSpinBox()
@@ -117,7 +113,6 @@ class CommonSettingsPage(QWidget):
         runtime_form = QFormLayout(runtime_group)
         runtime_form.addRow("Fullscreen:", self.fullscreen_check)
         runtime_form.addRow("Topmost:", self.topmost_check)
-        runtime_form.addRow("Debug output:", self.debug_output_check)
         runtime_layout.addWidget(runtime_group)
         runtime_layout.addStretch()
 
@@ -174,7 +169,6 @@ class CommonSettingsPage(QWidget):
         output_form.addRow("Save graph PDF:", self.save_graph_pdf_check)
         output_form.addRow("Auto open graph:", self.auto_open_graph_check)
         output_form.addRow("Run evaluation:", self.run_evaluation_check)
-        output_form.addRow("Show graph:", self.show_graph_check)
         output_layout.addWidget(output_group)
         output_layout.addStretch()
 
@@ -221,7 +215,7 @@ class CommonSettingsPage(QWidget):
             "user": "LOCAL",
             "fullscreen": self.fullscreen_check.isChecked(),
             "topmost": self.topmost_check.isChecked(),
-            "debug_output": self.debug_output_check.isChecked(),
+            "debug_output": True,
             "joystick_index": self.joystick_index_spin.value(),
             "break_axis": self.break_axis_spin.value(),
             "reset_axis": self.reset_axis_spin.value(),
@@ -240,7 +234,7 @@ class CommonSettingsPage(QWidget):
             "save_graph_pdf": self.save_graph_pdf_check.isChecked(),
             "auto_open_graph": self.auto_open_graph_check.isChecked(),
             "run_evaluation": self.run_evaluation_check.isChecked(),
-            "show_graph": self.show_graph_check.isChecked(),
+            "show_graph": False,
         }
 
     def _parse_deadzone(self) -> list[int]:
@@ -252,7 +246,6 @@ class CommonSettingsPage(QWidget):
     def load_common_dict(self, data: dict) -> None:
         self.fullscreen_check.setChecked(data.get("fullscreen", True))
         self.topmost_check.setChecked(data.get("topmost", True))
-        self.debug_output_check.setChecked(data.get("debug_output", False))
         self.joystick_index_spin.setValue(data.get("joystick_index", 0))
         self.break_axis_spin.setValue(data.get("break_axis", 5))
         self.reset_axis_spin.setValue(data.get("reset_axis", 6))
@@ -271,7 +264,6 @@ class CommonSettingsPage(QWidget):
         self.save_graph_pdf_check.setChecked(data.get("save_graph_pdf", True))
         self.auto_open_graph_check.setChecked(data.get("auto_open_graph", True))
         self.run_evaluation_check.setChecked(data.get("run_evaluation", True))
-        self.show_graph_check.setChecked(data.get("show_graph", False))
 
     def _indicator_style(self, active: bool, value: float = 0.0) -> str:
         if active:
