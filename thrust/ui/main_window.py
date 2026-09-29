@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
         self._auto_reconnect = False
         self._catalogue_connection_ok = False
         self._reconnect_in_flight = False
+        self._measurement_active = False
         self.log_history: list[str] = []
         self.log_dialog: QDialog | None = None
         self.log_view: QPlainTextEdit | None = None
@@ -428,7 +429,7 @@ class MainWindow(QMainWindow):
         self.reconnect_checked.connect(self._apply_reconnect_check)
         self.catalogue_timer = QTimer(self)
         self.catalogue_timer.timeout.connect(self._check_webdb_catalogue)
-        self.catalogue_timer.start(60_000)
+        self.catalogue_timer.start(5_000)
         QTimer.singleShot(0, self._auto_connect_joystick)
 
     def _refresh_joystick_selector(self) -> None:
@@ -825,6 +826,8 @@ class MainWindow(QMainWindow):
         self.append_log("WebDB disconnected. Offline mode is active.")
 
     def _check_webdb_catalogue(self) -> None:
+        if self._measurement_active:
+            return
         client = self.client
         if client is None or self.offline_mode:
             if (self._auto_reconnect and not self._reconnect_in_flight
@@ -837,8 +840,14 @@ class MainWindow(QMainWindow):
                 def reconnect() -> None:
                     replacement = WebDbClient(url, timeout=8)
                     try:
+                        if self._measurement_active:
+                            return
                         account = replacement.login(username, password)
+                        if self._measurement_active:
+                            return
                         tests = replacement.list_tests()
+                        if self._measurement_active:
+                            return
                         participants = replacement.list_participants() if replacement.role != "student" else None
                         self.reconnect_checked.emit(generation, replacement, (account, tests, participants), None)
                     except (WebDbError, KeyError, ValueError) as exc:
@@ -853,7 +862,11 @@ class MainWindow(QMainWindow):
 
         def fetch() -> None:
             try:
+                if self._measurement_active:
+                    return
                 tests = client.list_tests()
+                if self._measurement_active:
+                    return
                 participants = client.list_participants() if client.role != "student" else None
                 self.catalogue_checked.emit(generation, client, (tests, participants), None)
             except (WebDbError, KeyError, ValueError) as exc:
@@ -1151,6 +1164,7 @@ class MainWindow(QMainWindow):
             or str(test.get("test_code", "")).upper().startswith("SIMPLE")
         )
 
+        uploaded_to_webdb = False
         try:
             if not self.common_page.joystick_active:
                 message = "Cannot start measurement: no joystick is connected."
@@ -1158,6 +1172,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Joystick unavailable", message)
                 return
 
+            self._measurement_active = True
+            self.catalogue_timer.stop()
             runtime = self.common_page.export_common_dict()
             runtime["debug_output"] = True
             create_local_graphs = self.create_local_graphs_check.isChecked()
@@ -1273,9 +1289,20 @@ class MainWindow(QMainWindow):
                 f"({uploaded.get('raw_size_bytes', 0)} bytes, SHA-256 {uploaded.get('raw_sha256', '')})."
             )
             self.append_log("Measurement finished and archived in WebDB.")
+            uploaded_to_webdb = True
         except Exception as exc:
             self.append_log(f"Measurement failed: {type(exc).__name__}: {exc}")
             QMessageBox.critical(self, "Measurement failed", f"{type(exc).__name__}: {exc}")
+        finally:
+            if self._measurement_active:
+                self._measurement_active = False
+                # Ignore a catalogue result started just before the session.
+                self._catalogue_generation += 1
+                self._catalogue_check_in_flight = False
+                self._reconnect_in_flight = False
+                self.catalogue_timer.start(5_000)
+                if uploaded_to_webdb:
+                    QTimer.singleShot(0, self._check_webdb_catalogue)
 
     @staticmethod
     def _open_local_file(path: Path) -> None:
