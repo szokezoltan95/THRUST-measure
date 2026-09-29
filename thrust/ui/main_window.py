@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QSettings, QTimer, Qt
-from PyQt6.QtGui import QActionGroup, QColor, QGuiApplication, QPalette
+from PyQt6.QtGui import QActionGroup, QColor, QFont, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -617,18 +617,19 @@ class MainWindow(QMainWindow):
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(colors["disabled_text"]))
         app = QApplication.instance()
         if app is not None:
+            app.setFont(QFont("Segoe UI", 10))
             app.setPalette(palette)
             app.setStyleSheet(f"""
-                QWidget {{ color: {colors['text']}; font-size: 13px; }}
+                QWidget {{ color: {colors['text']}; font-size: 10pt; }}
                 QMainWindow, QDialog, QWidget#centralWidget {{ background: {colors['window']}; }}
                 QGroupBox {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 8px; margin-top: 10px; padding: 12px 10px 10px; font-weight: 600; }}
                 QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 5px; color: {colors['accent']}; }}
                 QLabel {{ color: {colors['text']}; background: transparent; }}
-                QLabel#appTitle {{ color: {colors['text']}; font-size: 30px; font-weight: 800; }}
-                QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 22px; padding: 0; }}
+                QLabel#appTitle {{ color: {colors['text']}; font-size: 23pt; font-weight: 800; }}
+                QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 17pt; padding: 0; }}
                 QToolButton#appearanceButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; background: {colors['surface_alt']}; }}
                 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
-                QPlainTextEdit#detailedLog {{ background: {colors['log']}; font-family: monospace; font-size: 12px; }}
+                QPlainTextEdit#detailedLog {{ background: {colors['log']}; font-family: monospace; font-size: 9pt; }}
                 QLabel#footerLog {{ color: {colors['muted']}; padding-left: 4px; }}
                 QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
                 QComboBox QAbstractItemView {{ color: {colors['text']}; background: {colors['surface']}; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; border: 1px solid {colors['border']}; outline: 0; }}
@@ -636,7 +637,7 @@ class MainWindow(QMainWindow):
                 QPushButton:hover {{ background: {colors['button_hover']}; border-color: {colors['accent']}; }}
                 QPushButton:pressed {{ background: {colors['selection']}; }}
                 QPushButton:disabled {{ color: {colors['disabled_text']}; background: {colors['disabled']}; border-color: {colors['disabled']}; }}
-                QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
+                QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 11pt; font-weight: 700; padding: 7px 16px; }}
                 QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
                 QPushButton#selectionPicker {{ text-align: left; min-height: 24px; padding: 3px 10px; font-weight: 600; }}
                 QPushButton#joystickButton {{ text-align: center; min-height: 24px; padding: 3px 8px; font-weight: 600; }}
@@ -645,10 +646,10 @@ class MainWindow(QMainWindow):
                 QPushButton#joystickButton[state="disconnected"] {{ color: #ef5962; }}
                 QPushButton#axisAssignButton {{ text-align: center; min-height: 30px; padding: 2px 5px; font-weight: 600; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
-                QLabel#measurementStatus {{ background: transparent; border: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
+                QLabel#measurementStatus {{ background: transparent; border: none; font-size: 8pt; font-weight: 700; letter-spacing: .3px; }}
                 QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
                 QLabel#measurementStatus[state="error"] {{ color: #ef5962; }}
-                QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 17px; font-weight: 800; letter-spacing: .4px; }}
+                QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 13pt; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
                 QCheckBox {{ color: {colors['text']}; spacing: 8px; }}
