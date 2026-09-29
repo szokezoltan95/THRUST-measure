@@ -119,8 +119,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
-        self.resize(840, 820)
-        self.setMinimumSize(760, 600)
+        self.resize(760, 900)
+        self.setMinimumSize(740, 600)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
         if self.theme_mode not in {"system", "dark", "light"}:
@@ -205,6 +205,7 @@ class MainWindow(QMainWindow):
 
         selection_group = QGroupBox("Measurement session")
         selection_group_layout = QVBoxLayout(selection_group)
+        selection_group_layout.addWidget(mode_switch)
         selection_form = QFormLayout()
         selection_form.addRow("Participant ID:", self.participant_button)
         selection_form.addRow("Test version:", self.test_button)
@@ -216,21 +217,20 @@ class MainWindow(QMainWindow):
         self.joystick_selector = QComboBox()
         self.joystick_selector.setPlaceholderText("Select joystick")
         self.joystick_selector.currentIndexChanged.connect(self._select_joystick)
-        joystick_row.addWidget(QLabel("Device:"))
-        joystick_row.addWidget(self.joystick_selector, 1)
+        self.joystick_selector.setVisible(False)
+        self.joystick_button = QPushButton("SELECT JOYSTICK · DISCONNECTED")
+        self.joystick_button.setObjectName("joystickButton")
+        self.joystick_button.setFixedHeight(36)
+        self.joystick_button.setProperty("state", "disconnected")
+        self.joystick_button.clicked.connect(self._choose_joystick)
+        joystick_row.addWidget(QLabel("Joystick:"))
+        joystick_row.addWidget(self.joystick_button, 1)
         joystick_layout.addLayout(joystick_row)
-
-        joystick_status_row = QHBoxLayout()
-        self.joystick_led = QLabel("● DISCONNECTED")
-        self.joystick_led.setObjectName("joystickLed")
-        self.joystick_status_text = QLabel("Searching for joystick…")
-        self.joystick_status_text.setWordWrap(True)
-        joystick_status_row.addWidget(self.joystick_led)
-        joystick_status_row.addWidget(self.joystick_status_text, 1)
-        joystick_layout.addLayout(joystick_status_row)
 
         feedback_grid = QGridLayout()
         self.joystick_bars = {}
+        self.axis_bar_stacks: dict[str, QStackedWidget] = {}
+        self.axis_placeholders: dict[str, QLabel] = {}
         self.axis_rows: dict[str, QWidget] = {}
         self._axis_spins = {
             "LX": self.common_page.lx_axis_spin,
@@ -255,13 +255,27 @@ class MainWindow(QMainWindow):
             bar.setObjectName("miniAxis")
             self.joystick_bars[name] = bar
             axis_row_layout.addWidget(label)
-            axis_row_layout.addWidget(bar, 1)
+            if name == "BREAK":
+                stack = QStackedWidget()
+                stack.setFixedHeight(14)
+                placeholder = QLabel("—")
+                placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                placeholder.setObjectName("axisPlaceholder")
+                placeholder.setToolTip("BREAK axis is not active")
+                stack.addWidget(bar)
+                stack.addWidget(placeholder)
+                stack.setCurrentWidget(placeholder)
+                self.axis_bar_stacks[name] = stack
+                self.axis_placeholders[name] = placeholder
+                axis_row_layout.addWidget(stack, 1)
+            else:
+                axis_row_layout.addWidget(bar, 1)
             feedback_grid.addWidget(axis_row, row, 0)
             self.axis_rows[name] = axis_row
             self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
         joystick_layout.addLayout(feedback_grid)
 
-        self.axis_selectors: dict[str, QComboBox] = {}
+        self.axis_selector_buttons: dict[str, QPushButton] = {}
         self.axis_selector_rows: dict[str, QWidget] = {}
         mapping_group = QGroupBox("Axis assignment")
         mapping_grid = QGridLayout(mapping_group)
@@ -275,14 +289,14 @@ class MainWindow(QMainWindow):
             cell_layout.setContentsMargins(0, 0, 0, 0)
             cell_layout.setSpacing(6)
             cell_layout.addWidget(QLabel(name))
-            selector = QComboBox()
-            selector.setObjectName(f"axisSelector{name.title()}")
-            selector.setMinimumWidth(75)
-            self.axis_selectors[name] = selector
-            cell_layout.addWidget(selector, 1)
+            selector = QPushButton(f"Axis {self._axis_spins[name].value()}")
+            selector.setObjectName("axisAssignButton")
+            selector.setFixedWidth(104)
+            self.axis_selector_buttons[name] = selector
+            cell_layout.addWidget(selector)
             mapping_grid.addWidget(mapping_cell, row, column)
             self.axis_selector_rows[name] = mapping_cell
-            selector.currentIndexChanged.connect(lambda _index, role=name: self._axis_selection_changed(role))
+            selector.clicked.connect(lambda _checked=False, role=name: self._show_axis_choices(role))
             self._axis_spins[name].valueChanged.connect(lambda value, role=name: self._axis_spin_changed(role, value))
         self._refresh_axis_selectors()
         joystick_layout.addWidget(mapping_group)
@@ -292,6 +306,19 @@ class MainWindow(QMainWindow):
         self.run_button.setMinimumHeight(62)
         self.run_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.run_button.clicked.connect(self._run_selected_measurement)
+
+        self.measurement_status = {}
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(8)
+        for key in ("participant", "test", "joystick"):
+            indicator = QLabel()
+            indicator.setObjectName("measurementStatus")
+            indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            indicator.setFixedHeight(28)
+            indicator.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.measurement_status[key] = indicator
+            status_row.addWidget(indicator, 1)
 
         self.advanced_button = QPushButton("Settings")
         self.advanced_button.clicked.connect(self._open_advanced)
@@ -370,13 +397,13 @@ class MainWindow(QMainWindow):
         self.content_splitter.addWidget(log_panel)
         self.content_splitter.setStretchFactor(0, 1)
         self.content_splitter.setStretchFactor(1, 1)
-        self.content_splitter.setSizes([800, 340])
+        self.content_splitter.setSizes([360, 360])
 
         root.addLayout(title_row)
-        root.addWidget(mode_switch)
         root.addWidget(session_ribbon)
         root.addWidget(self.content_splitter, 1)
         root.addWidget(self.run_button)
+        root.addLayout(status_row)
 
         self.setCentralWidget(central)
         self._apply_theme()
@@ -408,7 +435,7 @@ class MainWindow(QMainWindow):
             self.joystick_selector.blockSignals(False)
             self.joystick_device_names = devices
 
-        self._update_run_availability(bool(devices))
+        self._update_run_availability(self.common_page.joystick_active)
         if not devices:
             if self.common_page.joystick_active:
                 self.common_page.stop_joystick()
@@ -447,29 +474,34 @@ class MainWindow(QMainWindow):
     def _refresh_axis_selectors(self) -> None:
         if not hasattr(self, "axis_selectors"):
             return
-        count = self._axis_count()
-        for role, selector in self.axis_selectors.items():
+        for role, selector in self.axis_selector_buttons.items():
             selected_axis = self._axis_spins[role].value()
-            selector.blockSignals(True)
-            selector.clear()
-            for axis_index in range(count):
-                selector.addItem(f"Axis {axis_index}", axis_index)
-            if selected_axis >= count:
-                selector.addItem(f"Axis {selected_axis} (unavailable)", selected_axis)
-            selector.setCurrentIndex(max(0, selector.findData(selected_axis)))
-            selector.blockSignals(False)
+            selector.setText(f"Axis {selected_axis}")
+            selector.setToolTip(f"{role} uses joystick axis {selected_axis}. Click to change.")
 
-    def _axis_selection_changed(self, role: str) -> None:
-        axis_index = self.axis_selectors[role].currentData()
-        if isinstance(axis_index, int):
-            self._axis_spins[role].setValue(axis_index)
-            self._update_joystick_feedback(self.common_page.latest_axis_values)
+    def _show_axis_choices(self, role: str) -> None:
+        menu = QMenu(self.axis_selector_buttons[role])
+        selected_axis = self._axis_spins[role].value()
+        count = self._axis_count()
+        for axis_index in range(count):
+            action = menu.addAction(f"Axis {axis_index}")
+            action.setCheckable(True)
+            action.setChecked(axis_index == selected_axis)
+            action.triggered.connect(lambda _checked=False, chosen=axis_index, axis_role=role: self._axis_selection_changed(axis_role, chosen))
+        if selected_axis >= count:
+            menu.addAction(f"Axis {selected_axis} (currently unavailable)").setEnabled(False)
+        button = self.axis_selector_buttons[role]
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def _axis_selection_changed(self, role: str, axis_index: int) -> None:
+        self._axis_spins[role].setValue(axis_index)
+        self._update_joystick_feedback(self.common_page.latest_axis_values)
 
     def _axis_spin_changed(self, role: str, value: int) -> None:
-        selector = self.axis_selectors.get(role)
-        if selector is None or selector.currentData() == value:
-            return
-        self._refresh_axis_selectors()
+        selector = self.axis_selector_buttons.get(role)
+        if selector is not None:
+            selector.setText(f"Axis {value}")
+            selector.setToolTip(f"{role} uses joystick axis {value}. Click to change.")
 
     def _sync_selection_labels(self) -> None:
         participant = self.participant_combo.currentText().strip()
@@ -582,6 +614,14 @@ class MainWindow(QMainWindow):
                 QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
                 QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
                 QPushButton#selectionPicker {{ text-align: left; min-height: 30px; font-weight: 600; }}
+                QPushButton#joystickButton[state="connected"] {{ color: #ffffff; background: #176b3a; border-color: #28a45d; font-weight: 700; }}
+                QPushButton#joystickButton[state="disconnected"] {{ color: #ffffff; background: #76252c; border-color: #a33b43; font-weight: 700; }}
+                QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
+                QPushButton#axisAssignButton {{ text-align: left; min-height: 30px; padding-left: 9px; }}
+                QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
+                QLabel#measurementStatus {{ border-radius: 5px; border: 1px solid {colors['border']}; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
+                QLabel#measurementStatus[state="ready"] {{ color: #ffffff; background: #176b3a; border-color: #28a45d; }}
+                QLabel#measurementStatus[state="error"] {{ color: #ffffff; background: #76252c; border-color: #a33b43; }}
                 QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 17px; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
@@ -617,7 +657,8 @@ class MainWindow(QMainWindow):
                 self.content_splitter.setSizes([340, 460])
             else:
                 width = max(1, self.content_splitter.width())
-                self.content_splitter.setSizes([int(width * 0.70), int(width * 0.30)])
+                half = width // 2
+                self.content_splitter.setSizes([half, width - half])
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
@@ -626,16 +667,29 @@ class MainWindow(QMainWindow):
             if self.offline_mode
             else self.participant_combo.currentData()
         )
-        self.run_button.setEnabled(bool(
-            connected and self.current_manifest and self.test_combo.currentIndex() >= 0
-            and participant_ready
-        ))
+        test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
+        self.run_button.setEnabled(connected and test_ready and participant_ready)
+        self._set_status_indicator("participant", participant_ready, "PARTICIPANT · OK", "SELECT PARTICIPANT")
+        self._set_status_indicator("test", test_ready, "TEST · OK", "SELECT TEST")
+        self._set_status_indicator("joystick", connected, "JOYSTICK · OK", "JOYSTICK DISCONNECTED")
+
+    def _set_status_indicator(self, key: str, ready: bool, good_text: str, error_text: str) -> None:
+        indicator = self.measurement_status.get(key)
+        if indicator is None:
+            return
+        indicator.setText(good_text if ready else error_text)
+        indicator.setProperty("state", "ready" if ready else "error")
+        indicator.style().unpolish(indicator)
+        indicator.style().polish(indicator)
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
 
     def _auto_connect_joystick(self) -> None:
         self._refresh_joystick_selector()
+
+    def _choose_joystick(self) -> None:
+        self._choose_from_table("Choose joystick", self.joystick_selector, ("Device",))
 
     def _select_joystick(self, index: int) -> None:
         device_index = self.joystick_selector.itemData(index)
@@ -645,12 +699,12 @@ class MainWindow(QMainWindow):
         self.common_page.select_joystick(int(device_index), connect=True)
 
     def _set_joystick_status(self, connected: bool, status: str) -> None:
-        self.joystick_led.setText("● CONNECTED" if connected else "● DISCONNECTED")
-        self.joystick_led.setProperty("connectionState", "connected" if connected else "disconnected")
-        self.joystick_led.style().unpolish(self.joystick_led)
-        self.joystick_led.style().polish(self.joystick_led)
-        self.joystick_status_text.setText(status)
+        self.joystick_button.setText("JOYSTICK · CONNECTED" if connected else "SELECT JOYSTICK · DISCONNECTED")
+        self.joystick_button.setProperty("state", "connected" if connected else "disconnected")
+        self.joystick_button.style().unpolish(self.joystick_button)
+        self.joystick_button.style().polish(self.joystick_button)
         self._refresh_axis_selectors()
+        self._update_joystick_feedback(self.common_page.latest_axis_values)
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
 
@@ -659,8 +713,12 @@ class MainWindow(QMainWindow):
             return
         for role, bar in self.joystick_bars.items():
             axis_index = self._axis_spins[role].value()
-            value = float(values[axis_index]) if 0 <= axis_index < len(values) else 0.0
-            bar.setValue(int(max(-1.0, min(1.0, value)) * 100))
+            available = self.common_page.joystick_active and 0 <= axis_index < len(values)
+            if role == "BREAK":
+                self.axis_bar_stacks[role].setCurrentWidget(bar if available else self.axis_placeholders[role])
+            if available:
+                value = float(values[axis_index])
+                bar.setValue(int(max(-1.0, min(1.0, value)) * 100)
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
