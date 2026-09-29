@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
         self.resize(760, 900)
-        self.setMinimumSize(740, 600)
+        self.setMinimumSize(640, 600)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
         if self.theme_mode not in {"system", "dark", "light"}:
@@ -718,7 +718,7 @@ class MainWindow(QMainWindow):
                 self.axis_bar_stacks[role].setCurrentWidget(bar if available else self.axis_placeholders[role])
             if available:
                 value = float(values[axis_index])
-                bar.setValue(int(max(-1.0, min(1.0, value)) * 100)
+                bar.setValue(int(max(-1.0, min(1.0, value)) * 100))
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
