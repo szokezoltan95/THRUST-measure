@@ -992,7 +992,7 @@ class MainWindow(QMainWindow):
             runtime["debug_output"] = True
             create_local_graphs = self.create_local_graphs_check.isChecked()
             runtime["save_graph_pdf"] = create_local_graphs
-            runtime["auto_open_graph"] = create_local_graphs
+            runtime["auto_open_graph"] = False
             selected_joystick = self.joystick_selector.currentData()
             runtime["joystick_index"] = int(selected_joystick) if isinstance(selected_joystick, int) and selected_joystick >= 0 else 0
             if is_simple:
