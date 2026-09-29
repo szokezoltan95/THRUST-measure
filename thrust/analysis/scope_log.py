@@ -14,6 +14,7 @@ from statistics import median
 from typing import Any
 
 REQUIRED_COLUMNS = {"TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"}
+OPTIONAL_COLUMNS = {"ACTION_ID", "IN_RANGE", "LEVR", "BUTT", "SIDL", "SIDR"}
 LEGACY_COLUMN_NAMES = {
     "AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX",
     "AREQ": "LXRQ", "EREQ": "LYRQ", "TREQ": "RYRQ", "RREQ": "RXRQ",
@@ -214,9 +215,10 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
         if missing:
             raise ScopeLogError(f"SCoPE log is missing columns: {sorted(missing)}")
         rows: list[dict[str, float]] = []
+        numeric_columns = REQUIRED_COLUMNS | (OPTIONAL_COLUMNS & columns)
         for line_number, row in enumerate(reader, start=2):
             try:
-                rows.append({name: float(row[name]) for name in REQUIRED_COLUMNS})
+                rows.append({name: float(row[name]) for name in numeric_columns if row.get(name) not in (None, "")})
             except (KeyError, TypeError, ValueError) as exc:
                 raise ScopeLogError(f"Invalid numeric value on line {line_number}.") from exc
     if len(rows) < 2:
@@ -242,8 +244,26 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
         )
         for channel in REQUEST_COLUMNS
     }
+    metrics: dict[str, float | int | None] = {
+        "sample_count": len(rows), "duration_s": duration, "sampling_hz": sampling_hz,
+    }
+    for channel, summary in channel_summaries.items():
+        for name, value in summary.items():
+            metrics[f"{channel}.{name}"] = value
+    normalized_response = build_normalized_step_response(rows, sampling_hz)
+    for channel, response in normalized_response["channels"].items():
+        for name, value in response["metrics"].items():
+            metrics[f"{channel}.{name}"] = value
+        metrics[f"{channel}.step_count"] = response["transition_count"]
+
+    intervals_sorted = sorted(intervals)
+    interval_mean = sum(intervals) / len(intervals)
+    interval_sd = math.sqrt(sum((value - interval_mean) ** 2 for value in intervals) / len(intervals))
+    action_events = _action_events(rows)
     return {
-        "schema_version": "scope-analysis-v4",
+        "schema_version": "thrust-analysis-v1",
+        "algorithm_version": "scope-basic-1.0.0",
+        "analysis_type": "SCOPE_STEP_RESPONSE",
         "source_format": "SCoPE_TSV_V2",
         "source_file": source.name,
         "sample_count": len(rows),
@@ -254,5 +274,42 @@ def analyze_scope_log(path: str | Path) -> dict[str, Any]:
         "columns": sorted(columns),
         "request_transition_count": transitions,
         "channels": channel_summaries,
-        "normalized_step_response": build_normalized_step_response(rows, sampling_hz),
+        "metrics": metrics,
+        "quality": {
+            "interval_median_s": median(intervals),
+            "interval_min_s": min(intervals),
+            "interval_max_s": max(intervals),
+            "interval_sd_s": interval_sd,
+            "relative_interval_sd": interval_sd / interval_mean if interval_mean else None,
+            "intervals_over_1_5_median": sum(value > 1.5 * median(intervals) for value in intervals),
+        },
+        "events": action_events,
+        "normalized_step_response": normalized_response,
     }
+
+
+def _action_events(rows: list[dict[str, float]]) -> list[dict[str, Any]]:
+    if not rows or "ACTION_ID" not in rows[0]:
+        return []
+    events: list[dict[str, Any]] = []
+    begin = 0
+    while begin < len(rows):
+        action_id = rows[begin].get("ACTION_ID", 0.0)
+        end = begin + 1
+        while end < len(rows) and rows[end].get("ACTION_ID", 0.0) == action_id:
+            end += 1
+        first = rows[begin]
+        segment = rows[begin:end]
+        in_zone = [row.get("IN_RANGE", 0.0) for row in segment]
+        events.append({
+            "action_id": int(action_id),
+            "start_index": begin,
+            "end_index": end - 1,
+            "start_time_s": first["TIME"],
+            "end_time_s": segment[-1]["TIME"],
+            "duration_s": segment[-1]["TIME"] - first["TIME"],
+            "request": {key: first[key] for key in REQUEST_COLUMNS},
+            "in_zone_fraction": sum(in_zone) / len(in_zone) if in_zone else 0.0,
+        })
+        begin = end
+    return events
