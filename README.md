@@ -162,4 +162,4 @@ import_measurements.bat --watch
 
 Watch mode checks the import folder and `Documents/THRUST/output` every five seconds. It waits until a file has stopped changing, then analyzes and uploads it. Stop it with `Ctrl+C`. The importer asks for the WebDB username and password; alternatively set `THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD` in the environment. Use an Admin or SuperAdmin account so it can create missing participants, or a Researcher account when every participant already exists. The WebDB URL can be changed with `--webdb`.
 
-Analysis JSON reports are saved under `.thrust-import/analysis` in the import workspace. Uploaded files are detected by their raw-content hash, so a later scan skips an identical log already in WebDB.
+Each raw log is paired with a versioned `.analysis.json` file beside it. Uploaded files are detected by their raw-content hash, so a later scan skips an identical log already in WebDB.
