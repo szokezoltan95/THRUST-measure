@@ -26,6 +26,7 @@ class SimpleSessionResult:
     completed_actions: int
     timed_out_actions: int
     reset_count: int
+    samples: int = 0
     aborted: bool = False
 
 
@@ -245,5 +246,6 @@ def run_simple_session(
         completed_actions=completed,
         timed_out_actions=timed_out,
         reset_count=reset_count,
+        samples=samples,
         aborted=aborted,
     )
