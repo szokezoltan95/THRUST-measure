@@ -72,18 +72,6 @@ class CommonSettingsPage(QWidget):
         self.use_dated_subfolders_check = QCheckBox()
         self.use_dated_subfolders_check.setChecked(True)
 
-        self.save_raw_log_check = QCheckBox()
-        self.save_raw_log_check.setChecked(True)
-        self.save_action_log_check = QCheckBox()
-        self.save_action_log_check.setChecked(True)
-        self.save_step_file_check = QCheckBox()
-        self.save_step_file_check.setChecked(True)
-        self.save_graph_pdf_check = QCheckBox()
-        self.save_graph_pdf_check.setChecked(True)
-        self.auto_open_graph_check = QCheckBox()
-        self.auto_open_graph_check.setChecked(True)
-        self.run_evaluation_check = QCheckBox()
-        self.run_evaluation_check.setChecked(True)
 
         self.lx_axis_spin = QSpinBox()
         self.ly_axis_spin = QSpinBox()
@@ -163,12 +151,7 @@ class CommonSettingsPage(QWidget):
         output_root_layout.addWidget(self.output_browse_button)
         output_form.addRow("Output root:", output_root_widget)
         output_form.addRow("Dated subfolders:", self.use_dated_subfolders_check)
-        output_form.addRow("Save raw log:", self.save_raw_log_check)
-        output_form.addRow("Save action log:", self.save_action_log_check)
-        output_form.addRow("Save step file:", self.save_step_file_check)
-        output_form.addRow("Save graph PDF:", self.save_graph_pdf_check)
-        output_form.addRow("Auto open graph:", self.auto_open_graph_check)
-        output_form.addRow("Run evaluation:", self.run_evaluation_check)
+        output_form.addRow("Raw log and analysis JSON:", QLabel("Always saved"))
         output_layout.addWidget(output_group)
         output_layout.addStretch()
 
@@ -228,13 +211,6 @@ class CommonSettingsPage(QWidget):
             },
             "output_root": self.output_root_edit.text().strip(),
             "use_dated_subfolders": self.use_dated_subfolders_check.isChecked(),
-            "save_raw_log": self.save_raw_log_check.isChecked(),
-            "save_action_log": self.save_action_log_check.isChecked(),
-            "save_step_file": self.save_step_file_check.isChecked(),
-            "save_graph_pdf": self.save_graph_pdf_check.isChecked(),
-            "auto_open_graph": self.auto_open_graph_check.isChecked(),
-            "run_evaluation": self.run_evaluation_check.isChecked(),
-            "show_graph": False,
         }
 
     def _parse_deadzone(self) -> list[int]:
@@ -258,12 +234,6 @@ class CommonSettingsPage(QWidget):
         self.rx_axis_spin.setValue(axis_map.get("RX", axis_map.get("RUDD", 3)))
         self.output_root_edit.setText(data.get("output_root", self.output_root_edit.text()))
         self.use_dated_subfolders_check.setChecked(data.get("use_dated_subfolders", True))
-        self.save_raw_log_check.setChecked(data.get("save_raw_log", True))
-        self.save_action_log_check.setChecked(data.get("save_action_log", True))
-        self.save_step_file_check.setChecked(data.get("save_step_file", True))
-        self.save_graph_pdf_check.setChecked(data.get("save_graph_pdf", True))
-        self.auto_open_graph_check.setChecked(data.get("auto_open_graph", True))
-        self.run_evaluation_check.setChecked(data.get("run_evaluation", True))
 
     def _indicator_style(self, active: bool, value: float = 0.0) -> str:
         if active:
