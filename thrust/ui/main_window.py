@@ -117,6 +117,7 @@ class AdvancedSettingsDialog(QDialog):
 
 class MainWindow(QMainWindow):
     catalogue_checked = pyqtSignal(object, object, object, object)
+    reconnect_checked = pyqtSignal(object, object, object, object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         self._catalogue_generation = 0
         self._auto_reconnect = False
         self._catalogue_connection_ok = False
+        self._reconnect_in_flight = False
         self.log_history: list[str] = []
         self.log_dialog: QDialog | None = None
         self.log_view: QPlainTextEdit | None = None
@@ -423,6 +425,7 @@ class MainWindow(QMainWindow):
         self.joystick_scan_timer.timeout.connect(self._poll_joystick_devices)
         self.joystick_scan_timer.start(1000)
         self.catalogue_checked.connect(self._apply_catalogue_check)
+        self.reconnect_checked.connect(self._apply_reconnect_check)
         self.catalogue_timer = QTimer(self)
         self.catalogue_timer.timeout.connect(self._check_webdb_catalogue)
         self.catalogue_timer.start(60_000)
@@ -824,8 +827,24 @@ class MainWindow(QMainWindow):
     def _check_webdb_catalogue(self) -> None:
         client = self.client
         if client is None or self.offline_mode:
-            if self._auto_reconnect and self.username_edit.text() and self.password_edit.text():
-                self._connect_webdb(show_dialog=False)
+            if (self._auto_reconnect and not self._reconnect_in_flight
+                    and self.username_edit.text() and self.password_edit.text()):
+                self._reconnect_in_flight = True
+                generation = self._catalogue_generation
+                url = self.server_edit.text().strip() or DEFAULT_WEBDB_URL
+                username, password = self.username_edit.text(), self.password_edit.text()
+
+                def reconnect() -> None:
+                    replacement = WebDbClient(url, timeout=8)
+                    try:
+                        account = replacement.login(username, password)
+                        tests = replacement.list_tests()
+                        participants = replacement.list_participants() if replacement.role != "student" else None
+                        self.reconnect_checked.emit(generation, replacement, (account, tests, participants), None)
+                    except (WebDbError, KeyError, ValueError) as exc:
+                        self.reconnect_checked.emit(generation, replacement, None, str(exc))
+
+                threading.Thread(target=reconnect, daemon=True, name="webdb-reconnect").start()
             return
         if self._catalogue_check_in_flight:
             return
@@ -841,6 +860,43 @@ class MainWindow(QMainWindow):
                 self.catalogue_checked.emit(generation, client, None, str(exc))
 
         threading.Thread(target=fetch, daemon=True, name="webdb-catalogue").start()
+
+    def _apply_reconnect_check(self, generation: int, client: WebDbClient, result: object, error: object) -> None:
+        if generation != self._catalogue_generation or not self._auto_reconnect or not self.offline_mode:
+            return
+        self._reconnect_in_flight = False
+        if error is not None:
+            self.append_log(f"WebDB reconnection failed: {error}")
+            return
+        account, tests, participants = result
+        self.client = client
+        self._catalogue_generation += 1
+        self._catalogue_connection_ok = True
+        self.offline_mode = False
+        self.config_source_combo.setCurrentIndex(0)
+        self.participant_combo.clear()
+        if client.role == "student":
+            participant_id = account.get("participant_id")
+            self.participant_combo.addItem(str(account.get("participant_code") or participant_id or "STUDENT"), participant_id)
+            self.participant_combo.setEditable(False)
+            self.participant_combo.setEnabled(False)
+        else:
+            for participant in participants:
+                self.participant_combo.addItem(participant["participant_code"], participant["id"])
+            self.participant_combo.setEditable(True)
+            self.participant_combo.setEnabled(bool(participants))
+        self.available_tests = [test for test in tests if test.get("is_active", False)]
+        self._refresh_test_choices()
+        self._sync_selection_labels()
+        self.connection_status.setText(f"● WebDB CONNECTED · {account.get('participant_code') if client.role == 'student' else account.get('username', '')}")
+        self._set_connection_state("connected")
+        self.connect_button.setVisible(False)
+        self.disconnect_button.setVisible(True)
+        self._update_selection_mode_controls()
+        if self.advanced_dialog is not None:
+            self.advanced_dialog.set_offline_visible(False)
+        self.append_log("WebDB reconnected; participants and tests refreshed.")
+        self._update_run_availability()
 
     def _apply_catalogue_check(self, generation: int, client: WebDbClient, result: object, error: object) -> None:
         if generation != self._catalogue_generation or client is not self.client or self.offline_mode:
@@ -902,6 +958,7 @@ class MainWindow(QMainWindow):
     def _activate_offline_mode(self, show_dialog: bool, error: str = "") -> None:
         self._catalogue_generation += 1
         self._catalogue_check_in_flight = False
+        self._reconnect_in_flight = False
         self.offline_mode = True
         self._catalogue_connection_ok = False
         self.client = None
