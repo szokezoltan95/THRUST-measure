@@ -40,13 +40,6 @@ class ScopeConfig:
     output_root: str = str(Path.home() / "Documents" / "THRUST" / "scope")
     profile_name: str = "default"
     use_dated_subfolders: bool = True
-    save_raw_log: bool = True
-    save_action_log: bool = True
-    save_step_file: bool = True
-    save_graph_pdf: bool = True
-    auto_open_graph: bool = True
-    run_evaluation: bool = True
-    show_graph: bool = False
 
     # launcher / UX
     expert_mode: bool = False
