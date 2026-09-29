@@ -150,30 +150,25 @@ class SCoPE_GUI:
         self.left_gimbal_window = self.scene.create_window(0, 0, window=self.left_gimbal, anchor="center")
         self.right_gimbal_window = self.scene.create_window(0, 0, window=self.right_gimbal, anchor="center")
 
-        action_font = ("Segoe UI", 14 if self.embedded else 16, "bold")
-        counter_font = ("Segoe UI", 12 if self.embedded else 14)
-        prompt_font = ("Segoe UI", 24 if self.embedded else 30, "bold")
+        hud_font = ("Segoe UI", 12)
+        prompt_font = ("Segoe UI", 26, "bold")
 
-        self.ribbon_bg = self.scene.create_rectangle(0, 0, 1, 1, fill="#061321", stipple="gray50", outline="#536b80", width=1)
-        self.header_bg = self.scene.create_rectangle(12, 12, 160, 64, fill="#061321", stipple="gray50", outline="#536b80", width=1)
-        self.title_item = self.scene.create_text(
-            28, 24, text="SCoPE",
-            fill=self.label_color, font=("Segoe UI", 16 if self.embedded else 20, "bold"),
-            anchor="nw",
+        self.ribbon_bg = self.scene.create_rectangle(
+            0, 0, 1, 1, fill="#101820", stipple="gray50", outline=""
         )
         self.action_item = self.scene.create_text(
             0, 0,
             text=self.action_text,
             fill=self.label_color,
-            font=action_font,
+            font=hud_font,
             anchor="nw",
         )
         self.counter_item = self.scene.create_text(
             0, 0,
             text=self.counter_text,
             fill=self.label_color,
-            font=counter_font,
-            anchor="nw",
+            font=hud_font,
+            anchor="ne",
         )
         self.prompt_item = self.scene.create_text(
             0, 0,
@@ -182,7 +177,6 @@ class SCoPE_GUI:
             font=prompt_font,
             anchor="center",
         )
-        self.countdown_bg = self.scene.create_rectangle(0, 0, 1, 1, fill="#061321", outline="#536b80", width=2, state="hidden")
 
         self.SCoPE_mainwindow.bind("<Configure>", self._on_resize)
         self._reposition_scene()
@@ -214,33 +208,24 @@ class SCoPE_GUI:
             w = self.SCoPE_mainwindow.winfo_width()
             h = self.SCoPE_mainwindow.winfo_height()
 
-            ribbon_top = h - (96 if not self.embedded else 68)
+            ribbon_height = 44
+            ribbon_top = h - ribbon_height
             self.scene.coords(self.ribbon_bg, 0, ribbon_top, w, h)
             self.scene.coords(self.left_gimbal_window, w * 0.30, h * 0.45)
             self.scene.coords(self.right_gimbal_window, w * 0.70, h * 0.45)
 
-            self.scene.coords(self.header_bg, 12, 12, 160, 64)
-            self.scene.coords(self.title_item, 28, 24)
-            self.scene.coords(self.action_item, 28, ribbon_top + 12)
-            self.scene.coords(self.counter_item, max(28, w - 240), ribbon_top + 12)
+            self.scene.coords(self.action_item, 18, ribbon_top + ribbon_height / 2)
+            self.scene.coords(self.counter_item, w - 18, ribbon_top + ribbon_height / 2)
             countdown = self.prompt_visible and self.prompt_text.isdecimal()
             if countdown:
                 self.scene.coords(self.prompt_item, w * 0.5, h * 0.5)
-                self.scene.itemconfigure(self.prompt_item, font=("Segoe UI", 76 if not self.embedded else 64, "bold"))
-                self.scene.coords(self.countdown_bg, w * 0.5 - 84, h * 0.5 - 72, w * 0.5 + 84, h * 0.5 + 72)
+                self.scene.itemconfigure(self.prompt_item, font=("Segoe UI", 72, "bold"))
             else:
-                self.scene.coords(self.prompt_item, w * 0.5, ribbon_top + 58)
-                self.scene.itemconfigure(self.prompt_item, font=("Segoe UI", 24 if self.embedded else 30, "bold"))
-            self.scene.itemconfigure(self.countdown_bg, state="normal" if countdown else "hidden")
+                self.scene.coords(self.prompt_item, w * 0.5, 58)
+                self.scene.itemconfigure(self.prompt_item, font=("Segoe UI", 26, "bold"))
             self.scene.tag_raise(self.ribbon_bg)
-            self.scene.tag_raise(self.header_bg)
-            self.scene.tag_raise(self.title_item)
             for item in (self.action_item, self.counter_item, self.prompt_item):
                 self.scene.tag_raise(item)
-            if countdown:
-                self.scene.tag_raise(self.countdown_bg)
-                self.scene.tag_raise(self.prompt_item)
-
             self.scene.itemconfigure(self.prompt_item, state="normal" if self.prompt_visible else "hidden")
         except Exception:
             pass
@@ -297,7 +282,6 @@ class SCoPE_GUI:
 
         self.SCoPE_mainwindow.configure(background=self.screen_background)
         self.scene.configure(bg=self.screen_background)
-        self.scene.itemconfigure(self.title_item, fill=self.label_color)
         self.scene.itemconfigure(self.action_item, fill=self.label_color)
         self.scene.itemconfigure(self.counter_item, fill=self.label_color)
         self.scene.itemconfigure(self.prompt_item, fill=self.prompt_color)
