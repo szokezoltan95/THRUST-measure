@@ -4,12 +4,13 @@ import csv
 import json
 import os
 import sys
+import threading
 from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSettings, QTimer, Qt
+from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QActionGroup, QColor, QFont, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
@@ -115,6 +116,8 @@ class AdvancedSettingsDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    catalogue_checked = pyqtSignal(object, object, object, object)
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
@@ -130,6 +133,10 @@ class MainWindow(QMainWindow):
         self.current_manifest: dict[str, Any] | None = None
         self.available_tests: list[dict[str, Any]] = []
         self.offline_mode = True
+        self._catalogue_check_in_flight = False
+        self._catalogue_generation = 0
+        self._auto_reconnect = False
+        self._catalogue_connection_ok = False
         self.log_history: list[str] = []
         self.log_dialog: QDialog | None = None
         self.log_view: QPlainTextEdit | None = None
@@ -415,6 +422,10 @@ class MainWindow(QMainWindow):
         self.joystick_scan_timer = QTimer(self)
         self.joystick_scan_timer.timeout.connect(self._poll_joystick_devices)
         self.joystick_scan_timer.start(1000)
+        self.catalogue_checked.connect(self._apply_catalogue_check)
+        self.catalogue_timer = QTimer(self)
+        self.catalogue_timer.timeout.connect(self._check_webdb_catalogue)
+        self.catalogue_timer.start(60_000)
         QTimer.singleShot(0, self._auto_connect_joystick)
 
     def _refresh_joystick_selector(self) -> None:
@@ -680,7 +691,8 @@ class MainWindow(QMainWindow):
             else self.participant_combo.currentData()
         )
         test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
-        self.run_button.setEnabled(connected and test_ready and participant_ready)
+        self.run_button.setEnabled(connected and test_ready and participant_ready and
+                                   (self.offline_mode or self._catalogue_connection_ok))
         self._set_status_indicator("participant", participant_ready, "PARTICIPANT · OK", "SELECT PARTICIPANT")
         self._set_status_indicator("test", test_ready, "TEST · OK", "SELECT TEST")
         self._set_status_indicator("joystick", connected, "JOYSTICK · OK", "JOYSTICK DISCONNECTED")
@@ -759,9 +771,11 @@ class MainWindow(QMainWindow):
             self.password_edit.setText(password)
             self._connect_webdb()
 
-    def _connect_webdb(self) -> None:
+    def _connect_webdb(self, *, show_dialog: bool = True) -> None:
+        self._auto_reconnect = True
         try:
             self.client = WebDbClient(self.server_edit.text().strip() or DEFAULT_WEBDB_URL)
+            self._catalogue_generation += 1
             account = self.client.login(self.username_edit.text(), self.password_edit.text())
             tests = self.client.list_tests()
             role = str(account.get("role", ""))
@@ -783,6 +797,7 @@ class MainWindow(QMainWindow):
 
             self.available_tests = [test for test in tests if test.get("is_active", False)]
             self.offline_mode = False
+            self._catalogue_connection_ok = True
             self.config_source_combo.setCurrentIndex(0)
             self._refresh_test_choices()
             self._sync_selection_labels()
@@ -799,11 +814,77 @@ class MainWindow(QMainWindow):
 
         except (WebDbError, KeyError, ValueError) as exc:
             self.append_log(f"WebDB connection failed: {exc}")
-            self._activate_offline_mode(show_dialog=True, error=str(exc))
+            self._activate_offline_mode(show_dialog=show_dialog, error=str(exc))
 
     def _disconnect_webdb(self) -> None:
+        self._auto_reconnect = False
         self._activate_offline_mode(show_dialog=False)
         self.append_log("WebDB disconnected. Offline mode is active.")
+
+    def _check_webdb_catalogue(self) -> None:
+        client = self.client
+        if client is None or self.offline_mode:
+            if self._auto_reconnect and self.username_edit.text() and self.password_edit.text():
+                self._connect_webdb(show_dialog=False)
+            return
+        if self._catalogue_check_in_flight:
+            return
+        self._catalogue_check_in_flight = True
+        generation = self._catalogue_generation
+
+        def fetch() -> None:
+            try:
+                tests = client.list_tests()
+                participants = client.list_participants() if client.role != "student" else None
+                self.catalogue_checked.emit(generation, client, (tests, participants), None)
+            except (WebDbError, KeyError, ValueError) as exc:
+                self.catalogue_checked.emit(generation, client, None, str(exc))
+
+        threading.Thread(target=fetch, daemon=True, name="webdb-catalogue").start()
+
+    def _apply_catalogue_check(self, generation: int, client: WebDbClient, result: object, error: object) -> None:
+        if generation != self._catalogue_generation or client is not self.client or self.offline_mode:
+            return
+        self._catalogue_check_in_flight = False
+        if error is not None:
+            self._catalogue_connection_ok = False
+            self._set_connection_state("warning")
+            self.connection_status.setText("● WebDB UNREACHABLE · retrying")
+            self.append_log(f"WebDB periodic check failed: {error}")
+            self._update_run_availability()
+            return
+        self._catalogue_connection_ok = True
+        self._set_connection_state("connected")
+        identity = (client.account or {}).get("participant_code") if client.role == "student" else (client.account or {}).get("username", "")
+        self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
+        tests, participants = result
+        active = [test for test in tests if test.get("is_active", False)]
+        if participants is not None:
+            before = [(self.participant_combo.itemData(i), self.participant_combo.itemText(i))
+                      for i in range(self.participant_combo.count())]
+            after = [(participant["id"], participant["participant_code"]) for participant in participants]
+            if before != after:
+                selected_id = self.participant_combo.currentData()
+                selected_text = self.participant_combo.currentText().strip()
+                self.participant_combo.blockSignals(True)
+                self.participant_combo.clear()
+                for participant_id, code in after:
+                    self.participant_combo.addItem(code, participant_id)
+                match = self.participant_combo.findData(selected_id)
+                if match >= 0:
+                    self.participant_combo.setCurrentIndex(match)
+                elif selected_text and not selected_id:
+                    self.participant_combo.setCurrentText(selected_text)
+                else:
+                    self.participant_combo.setCurrentIndex(-1)
+                self.participant_combo.blockSignals(False)
+                self.append_log("Participant list updated from WebDB.")
+        if active != self.available_tests:
+            self.available_tests = active
+            self._refresh_test_choices()
+            self.append_log("Test versions updated from WebDB.")
+        self._sync_selection_labels()
+        self._update_run_availability()
 
     def _offline_manifest(self, mode: str = "SCOPE") -> dict[str, Any]:
         is_simple = mode.upper() == "SIMPLE"
@@ -819,7 +900,10 @@ class MainWindow(QMainWindow):
         }
 
     def _activate_offline_mode(self, show_dialog: bool, error: str = "") -> None:
+        self._catalogue_generation += 1
+        self._catalogue_check_in_flight = False
         self.offline_mode = True
+        self._catalogue_connection_ok = False
         self.client = None
         self.current_manifest = None
         self.config_source_combo.setCurrentIndex(1)
