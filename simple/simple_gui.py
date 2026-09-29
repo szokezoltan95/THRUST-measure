@@ -28,23 +28,19 @@ class SimpleGUI:
         self.bg_id = None
         self.default_ground_id = self.canvas.create_rectangle(0, 0, 1, 1, fill="#536c54", outline="")
         self.default_horizon_id = self.canvas.create_line(0, 0, 1, 1, fill="#e5eee0", width=2)
-        self.header_bg_id = self.canvas.create_rectangle(12, 12, 160, 64, fill="#061321", stipple="gray50", outline="#536b80", width=1)
-        self.hud_id = self.canvas.create_text(
-            28, 24, anchor="nw", text="SimPLE",
-            fill="#ffffff", font=("Segoe UI", 20, "bold"),
-        )
         self.target_id = self.canvas.create_oval(0, 0, 0, 0, fill="", outline="#ff0000", width=4)
         self.copter_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#1e2cff", width=1)
         self.center_id = self.canvas.create_oval(0, 0, 0, 0, fill="#1e2cff", outline="#ffffff", width=1)
         self.direction_id = self.canvas.create_line(0, 0, 0, 0, fill="#ffffff", width=5, arrow=tk.LAST)
-        self.hud_panel_id = self.canvas.create_rectangle(0, 0, 1, 1, fill="#061321", stipple="gray50", outline="#536b80", width=1)
+        self.hud_panel_id = self.canvas.create_rectangle(
+            0, 0, 1, 1, fill="#101820", stipple="gray50", outline=""
+        )
         self.status_id = self.canvas.create_text(
-            28, 0, anchor="nw", text="", fill="#eaf2f8", font=("Segoe UI", 14),
+            22, 0, anchor="w", text="", fill="#eaf2f8", font=("Segoe UI", 12),
         )
         self.prompt_id = self.canvas.create_text(
             0, 0, anchor="center", text="", fill="#ff6b72", font=("Segoe UI", 30, "bold"),
         )
-        self.countdown_bg_id = self.canvas.create_rectangle(0, 0, 1, 1, fill="#061321", outline="#536b80", width=2, state="hidden")
         self.zone_color("red")
         self.root.update_idletasks()
         self._load_background()
@@ -116,25 +112,20 @@ class SimpleGUI:
         countdown = bool(self.canvas.itemcget(self.prompt_id, "text").isdecimal())
         if countdown:
             self.canvas.coords(self.prompt_id, width / 2, height / 2)
-            self.canvas.itemconfigure(self.prompt_id, font=("Segoe UI", 76, "bold"))
-            self.canvas.coords(self.countdown_bg_id, width / 2 - 84, height / 2 - 72, width / 2 + 84, height / 2 + 72)
+            self.canvas.itemconfigure(self.prompt_id, font=("Segoe UI", 72, "bold"))
         else:
-            self.canvas.coords(self.prompt_id, width / 2, height - 38)
-            self.canvas.itemconfigure(self.prompt_id, font=("Segoe UI", 30, "bold"))
-        self.canvas.itemconfigure(self.countdown_bg_id, state="normal" if countdown else "hidden")
-        self.canvas.coords(self.hud_panel_id, 0, height - 96, width, height)
+            self.canvas.coords(self.prompt_id, width / 2, 58)
+            self.canvas.itemconfigure(self.prompt_id, font=("Segoe UI", 26, "bold"))
+        hud_top = height - 44
+        self.canvas.coords(self.hud_panel_id, 0, hud_top, width, height)
         self.canvas.tag_raise(self.hud_panel_id)
-        self.canvas.tag_raise(self.header_bg_id)
-        self.canvas.tag_raise(self.hud_id)
         self.canvas.tag_raise(self.status_id)
-        if countdown:
-            self.canvas.tag_raise(self.countdown_bg_id)
         self.canvas.tag_raise(self.prompt_id)
 
     def _place_status(self) -> None:
         height = max(1, self.canvas.winfo_height())
         if hasattr(self, "status_id"):
-            self.canvas.coords(self.status_id, 28, height - 84)
+            self.canvas.coords(self.status_id, 22, height - 22)
 
     def update_target(self, target: tuple[float, float]) -> None:
         x, y = self._screen(*target)
