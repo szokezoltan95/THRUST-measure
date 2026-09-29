@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from thrust.analysis.artifact import analysis_sidecar_path, build_analysis_artifact
 from thrust.analysis.scope_log import ScopeLogError, analyze_scope_log
 from thrust.analysis.simple_log import SimpleLogError, analyze_simple_log
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
@@ -145,10 +146,9 @@ def read_compressed(path: Path) -> bytes:
 
 
 class MeasurementImporter:
-    def __init__(self, client: WebDbClient, *, dry_run: bool, report_dir: Path) -> None:
+    def __init__(self, client: WebDbClient, *, dry_run: bool) -> None:
         self.client = client
         self.dry_run = dry_run
-        self.report_dir = report_dir
         self.participants = client.list_participants()
         self.tests = client.list_tests()
         self.measurements = client._request_list("/api/admin/measurements")
@@ -219,13 +219,6 @@ class MeasurementImporter:
         if not PARTICIPANT_ID.fullmatch(participant_code):
             raise ImportProblem(f"Participant ID {participant_code!r} must contain five letters or digits.")
 
-        if info["mode"] == "SCOPE":
-            analysis = analyze_scope_log(path)
-            analysis["started_at"] = started_at_for(path)
-            analysis["analysis_type"] = "SCOPE_STEP_RESPONSE"
-        else:
-            analysis = analyze_simple_log(path, started_at=started_at_for(path))
-
         compressed = read_compressed(path)
         digest = hashlib.sha256(compressed).hexdigest()
         if digest in self.uploaded_hashes:
@@ -234,16 +227,48 @@ class MeasurementImporter:
             return "duplicate"
 
         participant = self.ensure_participant(participant_code)
+        current, descriptor = resolve_test_descriptor(info, self.tests)
         test = self.ensure_test(info)
-        report_name = f"{digest}.analysis.json"
-        self.report_dir.mkdir(parents=True, exist_ok=True)
-        (self.report_dir / report_name).write_text(
-            json.dumps(analysis, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
-        )
+        test_descriptor = test or current or descriptor
+        sidecar = analysis_sidecar_path(path)
+        analysis: dict[str, Any] | None = None
+        if sidecar.is_file():
+            try:
+                candidate = json.loads(sidecar.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ImportProblem(f"Could not read analysis sidecar {sidecar}: {exc}") from exc
+            if isinstance(candidate, dict) and candidate.get("schema_version") == "thrust-analysis-v1":
+                raw = candidate.get("raw_log", {})
+                if raw.get("sha256") != digest or raw.get("size_bytes") != len(compressed):
+                    raise ImportProblem(f"Analysis sidecar does not match raw log {path.name}.")
+                if candidate.get("analysis_type") != ("SCOPE_STEP_RESPONSE" if info["mode"] == "SCOPE" else "SIMPLE_2D_FLIGHT"):
+                    raise ImportProblem(f"Analysis sidecar mode does not match raw log {path.name}.")
+                if candidate.get("test", {}).get("test_code") != test_descriptor.get("test_code") or str(candidate.get("test", {}).get("version")) != str(test_descriptor.get("version")):
+                    raise ImportProblem(f"Analysis sidecar test version does not match filename {path.name}.")
+                analysis = candidate
+
+        if analysis is None:
+            if info["mode"] == "SCOPE":
+                calculated = analyze_scope_log(path)
+            else:
+                calculated = analyze_simple_log(path, started_at=started_at_for(path))
+            filename = path.name if path.name.lower().endswith(".gz") else path.name + ".gz"
+            analysis = build_analysis_artifact(
+                path,
+                calculated,
+                started_at=started_at_for(path),
+                test=test_descriptor,
+                parameters={"legacy_import": True},
+                runtime={},
+                session_summary={"legacy_import": True},
+                raw_bytes=compressed,
+                raw_file_name=filename,
+            )
+
         say(
             f"{info['mode']} · participant {participant_code} · "
-            f"{test['test_code'] + ' v' + str(test['version']) if test else 'legacy test (planned)'} · "
-            f"{analysis.get('sample_count', analysis.get('metrics', {}).get('simple_sample_count', '?'))} samples · {path}"
+            f"{test_descriptor['test_code']} v{test_descriptor['version']} · "
+            f"{analysis.get('sample_count', '?')} samples · {path}"
         )
         if self.dry_run:
             self.done_paths.add(path)
@@ -251,11 +276,11 @@ class MeasurementImporter:
         if participant is None or test is None:
             raise ImportProblem("Could not resolve participant or test after creation.")
 
-        filename = path.name if path.name.lower().endswith(".gz") else path.name + ".gz"
+        filename = analysis["raw_log"]["file_name"]
         payload = {
             "participant_id": participant["id"],
             "test_definition_id": test["id"],
-            "started_at": analysis.get("started_at") or started_at_for(path),
+            "started_at": analysis["started_at"],
             "status": "recorded",
             "source_file_name": filename,
             "raw_content_type": "application/gzip",
@@ -318,7 +343,6 @@ def main() -> int:
     roots = [workspace]
     if args.watch and output_root.resolve() != workspace:
         roots.append(output_root)
-    report_dir = workspace / ".thrust-import" / "analysis"
 
     username = args.username or input("WebDB username: ").strip()
     password = os.environ.get("THRUST_WEBDB_PASSWORD") or getpass.getpass("WebDB password: ")
@@ -335,7 +359,7 @@ def main() -> int:
         account = client.login(username, password)
         if account.get("role") not in {"admin", "superadmin", "researcher"}:
             raise ImportProblem("Use a WebDB admin or researcher account; student accounts cannot batch import measurements.")
-        importer = MeasurementImporter(client, dry_run=args.dry_run, report_dir=report_dir)
+        importer = MeasurementImporter(client, dry_run=args.dry_run)
         say(f"Authenticated as {username} ({account.get('role')}).")
         if not args.watch:
             _, failures = scan(importer, roots)
