@@ -558,9 +558,11 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
         gui.set_prompt_visible(True)
         for i in range(config.countdown_s, 0, -1):
             gui.set_prompt_text(str(i))
-            gui.SCoPE_mainwindow.update_idletasks()
-            gui.SCoPE_mainwindow.update()
-            time.sleep(1)
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                gui.SCoPE_mainwindow.update_idletasks()
+                gui.SCoPE_mainwindow.update()
+                time.sleep(min(1 / 60, max(0.0, deadline - time.monotonic())))
 
         gui.set_prompt_visible(False)
 
