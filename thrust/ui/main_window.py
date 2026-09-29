@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QAbstractItemView,
-    QFrame,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -31,7 +30,6 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QSplitter,
@@ -224,8 +222,14 @@ class MainWindow(QMainWindow):
         self.joystick_button.setFixedHeight(36)
         self.joystick_button.setProperty("state", "disconnected")
         self.joystick_button.clicked.connect(self._choose_joystick)
-        joystick_row.addWidget(QLabel("Joystick:"))
+        self.joystick_button.setText("Select Joystick")
+        self.joystick_state_label = QLabel("DISCONNECTED")
+        self.joystick_state_label.setObjectName("joystickState")
+        self.joystick_state_label.setProperty("state", "disconnected")
+        self.joystick_state_label.setFixedWidth(112)
+        self.joystick_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         joystick_row.addWidget(self.joystick_button, 1)
+        joystick_row.addWidget(self.joystick_state_label)
         joystick_layout.addLayout(joystick_row)
 
         feedback_grid = QGridLayout()
@@ -292,7 +296,7 @@ class MainWindow(QMainWindow):
             cell_layout.addWidget(QLabel(name))
             selector = QPushButton(f"Axis {self._axis_spins[name].value()}")
             selector.setObjectName("axisAssignButton")
-            selector.setFixedWidth(104)
+            selector.setFixedWidth(84)
             self.axis_selector_buttons[name] = selector
             cell_layout.addWidget(selector)
             mapping_grid.addWidget(mapping_cell, row, column)
@@ -376,17 +380,14 @@ class MainWindow(QMainWindow):
         controls_panel = QWidget()
         controls_layout = QVBoxLayout(controls_panel)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(10)
+        controls_layout.setSpacing(8)
         controls_layout.addWidget(selection_group)
         controls_layout.addWidget(joystick_group)
         controls_layout.addStretch(1)
-        controls_scroll = QScrollArea()
-        controls_scroll.setWidgetResizable(True)
-        controls_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        controls_scroll.setWidget(controls_panel)
-        controls_scroll.setMinimumWidth(300)
+        controls_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         log_panel = QGroupBox("Session log")
+        log_panel.setObjectName("sessionLogPanel")
         log_layout = QVBoxLayout(log_panel)
         log_layout.setContentsMargins(8, 12, 8, 8)
         log_layout.setSpacing(0)
@@ -394,7 +395,7 @@ class MainWindow(QMainWindow):
 
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.content_splitter.setChildrenCollapsible(False)
-        self.content_splitter.addWidget(controls_scroll)
+        self.content_splitter.addWidget(controls_panel)
         self.content_splitter.addWidget(log_panel)
         self.content_splitter.setStretchFactor(0, 1)
         self.content_splitter.setStretchFactor(1, 1)
@@ -441,7 +442,7 @@ class MainWindow(QMainWindow):
             if self.common_page.joystick_active:
                 self.common_page.stop_joystick()
             self._set_joystick_status(False, "No joystick detected")
-        elif not self.common_page.joystick_active:
+        elif len(devices) == 1 and not self.common_page.joystick_active:
             self._select_joystick(self.joystick_selector.currentIndex())
 
     def _selected_theme_is_dark(self) -> bool:
@@ -605,7 +606,8 @@ class MainWindow(QMainWindow):
                 QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 22px; padding: 0; }}
                 QToolButton#appearanceButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; background: {colors['surface_alt']}; }}
                 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
-                QPlainTextEdit#sessionLog {{ background: {colors['log']}; font-family: monospace; font-size: 12px; }}
+                QPlainTextEdit#sessionLog {{ background: {colors['log']}; border: none; font-family: monospace; font-size: 12px; }}
+                QGroupBox#sessionLogPanel {{ background: {colors['log']}; border: 1px solid {colors['log']}; }}
                 QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
                 QComboBox QAbstractItemView {{ color: {colors['text']}; background: {colors['surface']}; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; border: 1px solid {colors['border']}; outline: 0; }}
                 QPushButton {{ color: {colors['text']}; background: {colors['button']}; border: 1px solid {colors['border']}; border-radius: 5px; padding: 7px 12px; }}
@@ -615,14 +617,15 @@ class MainWindow(QMainWindow):
                 QPushButton#modeSwitchOption {{ color: {colors['muted']}; background: {colors['surface_alt']}; font-size: 14px; font-weight: 700; padding: 7px 16px; }}
                 QPushButton#modeSwitchOption:checked {{ color: {colors['text']}; background: {colors['selection']}; border-color: {colors['accent']}; }}
                 QPushButton#selectionPicker {{ text-align: left; min-height: 30px; font-weight: 600; }}
-                QPushButton#joystickButton[state="connected"] {{ color: #ffffff; background: #176b3a; border-color: #28a45d; font-weight: 700; }}
-                QPushButton#joystickButton[state="disconnected"] {{ color: #ffffff; background: #76252c; border-color: #a33b43; font-weight: 700; }}
+                QPushButton#joystickButton {{ text-align: left; min-height: 30px; font-weight: 600; }}
                 QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
+                QLabel#joystickState[state="connected"] {{ color: #20b865; font-weight: 800; }}
+                QLabel#joystickState[state="disconnected"] {{ color: #ef5962; font-weight: 800; }}
                 QPushButton#axisAssignButton {{ text-align: left; min-height: 30px; padding-left: 9px; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
-                QLabel#measurementStatus {{ border-radius: 5px; border: 1px solid {colors['border']}; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
-                QLabel#measurementStatus[state="ready"] {{ color: #ffffff; background: #176b3a; border-color: #28a45d; }}
-                QLabel#measurementStatus[state="error"] {{ color: #ffffff; background: #76252c; border-color: #a33b43; }}
+                QLabel#measurementStatus {{ background: transparent; border: none; font-size: 11px; font-weight: 700; letter-spacing: .3px; }}
+                QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
+                QLabel#measurementStatus[state="error"] {{ color: #ef5962; }}
                 QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 17px; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
@@ -700,10 +703,20 @@ class MainWindow(QMainWindow):
         self.common_page.select_joystick(int(device_index), connect=True)
 
     def _set_joystick_status(self, connected: bool, status: str) -> None:
-        self.joystick_button.setText("JOYSTICK · CONNECTED" if connected else "SELECT JOYSTICK · DISCONNECTED")
-        self.joystick_button.setProperty("state", "connected" if connected else "disconnected")
-        self.joystick_button.style().unpolish(self.joystick_button)
-        self.joystick_button.style().polish(self.joystick_button)
+        if connected:
+            device_index = self.joystick_selector.currentData()
+            device_name = (
+                self.joystick_device_names[int(device_index)]
+                if isinstance(device_index, int) and 0 <= device_index < len(self.joystick_device_names)
+                else "Joystick"
+            )
+            self.joystick_button.setText(device_name)
+        else:
+            self.joystick_button.setText("Select Joystick")
+        self.joystick_state_label.setText("CONNECTED" if connected else "DISCONNECTED")
+        self.joystick_state_label.setProperty("state", "connected" if connected else "disconnected")
+        self.joystick_state_label.style().unpolish(self.joystick_state_label)
+        self.joystick_state_label.style().polish(self.joystick_state_label)
         self._refresh_axis_selectors()
         self._update_joystick_feedback(self.common_page.latest_axis_values)
         if hasattr(self, "run_button"):
