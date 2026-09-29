@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sys
@@ -44,8 +43,9 @@ from PyQt6.QtWidgets import (
 
 from scope.scope_config import ScopeConfig
 from simple.simple_config import SimpleConfig
+from thrust.analysis.artifact import build_analysis_artifact, save_analysis_artifact
 from thrust.analysis.scope_log import analyze_scope_log
-from thrust.analysis.simple_log import analyze_simple_log, save_step_graph, write_step_response
+from thrust.analysis.simple_log import analyze_simple_log
 from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
@@ -234,9 +234,6 @@ class MainWindow(QMainWindow):
         self.test_row_layout.addWidget(self.local_settings_button)
         selection_form.addRow("Participant ID:", self.participant_button)
         selection_form.addRow(self.test_row_label, self.test_row_widget)
-        self.create_local_graphs_check = QCheckBox("Create local graphs")
-        self.create_local_graphs_check.setChecked(False)
-        selection_form.addRow("Session options:", self.create_local_graphs_check)
         selection_group_layout.addLayout(selection_form)
 
         joystick_group = QGroupBox("Joystick link")
@@ -1184,9 +1181,7 @@ class MainWindow(QMainWindow):
             self.catalogue_timer.stop()
             runtime = self.common_page.export_common_dict()
             runtime["debug_output"] = True
-            create_local_graphs = self.create_local_graphs_check.isChecked()
-            runtime["save_graph_pdf"] = create_local_graphs
-            runtime["auto_open_graph"] = False
+            runtime["joystick_name"] = self.joystick_selector.currentText().strip()
             selected_joystick = self.joystick_selector.currentData()
             runtime["joystick_index"] = int(selected_joystick) if isinstance(selected_joystick, int) and selected_joystick >= 0 else 0
             if is_simple:
@@ -1207,29 +1202,13 @@ class MainWindow(QMainWindow):
                     config, runtime, participant=participant_code, profile_name=profile_name,
                     log_callback=self.append_log,
                 )
+                if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
+                    self.append_log("Measurement cancelled before recording.")
+                    return
                 raw_path = session.logfile_path
                 if not raw_path:
                     raise RuntimeError("SimPLE did not create a raw log.")
                 analysis = analyze_simple_log(raw_path, started_at=session.started_at)
-                base_dir = Path(raw_path).parent.parent
-                raw_stem = Path(raw_path).name.removesuffix(".gz").removesuffix(".tsv")
-                if runtime.get("save_step_file", True):
-                    step_path = base_dir / "steps" / (raw_stem + "_step.tsv")
-                    analysis.setdefault("artifacts", {})["step_response"] = Path(
-                        write_step_response(step_path, analysis)
-                    ).name
-                if runtime.get("save_graph_pdf", True):
-                    graph_path = base_dir / "graphs" / (raw_stem + "_response.pdf")
-                    analysis.setdefault("artifacts", {})["step_response_graph"] = Path(
-                        save_step_graph(graph_path, analysis)
-                    ).name
-                    if runtime.get("auto_open_graph", False):
-                        self._open_local_file(graph_path)
-                analysis_path = base_dir / "analysis" / (raw_stem + "_analysis.json")
-                analysis_path.parent.mkdir(parents=True, exist_ok=True)
-                analysis.setdefault("artifacts", {})["analysis_json"] = analysis_path.name
-                analysis_path.write_text(json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")
-                self.append_log(f"SimPLE analysis saved: {analysis_path}")
             else:
                 from thrust.runners.scope_runner import run_scope
                 config = (
@@ -1246,34 +1225,38 @@ class MainWindow(QMainWindow):
                 config.user = participant_code
                 config.profile_name = profile_name
                 config.debug_output = True
-                config.show_graph = create_local_graphs
                 config.validate()
                 self.append_log(
                     f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
                 )
                 session = run_scope(config, log_callback=self.append_log)
+                if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
+                    self.append_log("Measurement cancelled before recording.")
+                    return
                 raw_path = session.logfile_path
-                step_path = session.step_path
                 if not raw_path:
                     raise RuntimeError("Measurement did not create a raw log.")
                 analysis = analyze_scope_log(raw_path)
-                if step_path and Path(step_path).is_file() and "normalized_step_response" not in analysis:
-                    with Path(step_path).open("r", encoding="utf-8", newline="") as handle:
-                        reader = csv.DictReader(handle, delimiter="\\t")
-                        curves = {
-                            name: [] for name in (
-                                "Time[s]", "AMEA", "AMED", "ASTD", "EMEA", "EMED", "ESTD",
-                                "TMEA", "TMED", "TSTD", "RMEA", "RMED", "RSTD",
-                            )
-                        }
-                        for row in reader:
-                            for name in curves:
-                                if row.get(name) not in (None, ""):
-                                    curves[name].append(float(row[name]))
-                        analysis["normalized_step_response"] = {
-                            "schema_version": "scope-normalized-response-v1",
-                            "columns": curves,
-                        }
+
+            session_parameters = config.to_dict()
+            for local_only in ("user", "output_root", "profile_name", "fullscreen", "topmost", "debug_output"):
+                session_parameters.pop(local_only, None)
+            analysis = build_analysis_artifact(
+                raw_path,
+                analysis,
+                started_at=session.started_at,
+                test=test,
+                parameters=session_parameters,
+                runtime=runtime,
+                session_summary={
+                    "completed": getattr(session, "total_completed", 0),
+                    "mistakes": getattr(session, "total_mistakes", 0),
+                    "aborted": getattr(session, "aborted", False),
+                    "abort_reason": getattr(session, "abort_reason", ""),
+                },
+            )
+            analysis_path = save_analysis_artifact(raw_path, analysis)
+            self.append_log(f"Measurement analysis saved: {analysis_path}")
 
             if self.offline_mode:
                 self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
