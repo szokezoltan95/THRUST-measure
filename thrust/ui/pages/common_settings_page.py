@@ -130,8 +130,8 @@ class CommonSettingsPage(QWidget):
         mapping_form.addRow("RY:", self.ry_axis_spin)
         mapping_form.addRow("RX:", self.rx_axis_spin)
         mapping_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
-        mapping_form.addRow("Break button/axis:", self.break_axis_spin)
-        mapping_form.addRow("Reset button/axis:", self.reset_axis_spin)
+        mapping_form.addRow("Break axis:", self.break_axis_spin)
+        mapping_form.addRow("Reset axis:", self.reset_axis_spin)
 
         diagnostic_group = QGroupBox("Live joystick diagnostic")
         diagnostic_layout = QVBoxLayout(diagnostic_group)

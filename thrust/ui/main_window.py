@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QSettings, QTimer, Qt
-from PyQt6.QtGui import QColor, QGuiApplication, QPalette
+from PyQt6.QtGui import QActionGroup, QColor, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -33,6 +34,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -118,6 +120,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(760, 600)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
+        if self.theme_mode not in {"system", "dark", "light"}:
+            self.theme_mode = "system"
         self._system_palette = QApplication.palette()
 
         self.client: WebDbClient | None = None
@@ -213,8 +217,29 @@ class MainWindow(QMainWindow):
         joystick_layout.addLayout(joystick_status_row)
 
         feedback_grid = QGridLayout()
-        for row, name in enumerate(("LX", "LY", "RY", "RX")):
+        self.joystick_bars = {}
+        self.axis_selectors: dict[str, QComboBox] = {}
+        self.axis_rows: dict[str, QWidget] = {}
+        self._axis_spins = {
+            "LX": self.common_page.lx_axis_spin,
+            "LY": self.common_page.ly_axis_spin,
+            "RY": self.common_page.ry_axis_spin,
+            "RX": self.common_page.rx_axis_spin,
+            "BREAK": self.common_page.break_axis_spin,
+            "RESET": self.common_page.reset_axis_spin,
+        }
+        for row, name in enumerate(("LX", "LY", "RY", "RX", "BREAK", "RESET")):
+            axis_row = QWidget()
+            axis_row_layout = QHBoxLayout(axis_row)
+            axis_row_layout.setContentsMargins(0, 0, 0, 0)
+            axis_row_layout.setSpacing(7)
             label = QLabel(name)
+            label.setMinimumWidth(48)
+            selector = QComboBox()
+            selector.setObjectName(f"axisSelector{name.title()}")
+            selector.setMinimumWidth(94)
+            selector.setMaximumWidth(112)
+            self.axis_selectors[name] = selector
             bar = QProgressBar()
             bar.setRange(-100, 100)
             bar.setValue(0)
@@ -222,8 +247,14 @@ class MainWindow(QMainWindow):
             bar.setFixedHeight(8)
             bar.setObjectName("miniAxis")
             self.joystick_bars[name] = bar
-            feedback_grid.addWidget(label, row, 0)
-            feedback_grid.addWidget(bar, row, 1)
+            axis_row_layout.addWidget(label)
+            axis_row_layout.addWidget(selector)
+            axis_row_layout.addWidget(bar, 1)
+            feedback_grid.addWidget(axis_row, row, 0)
+            self.axis_rows[name] = axis_row
+            selector.currentIndexChanged.connect(lambda _index, role=name: self._axis_selection_changed(role))
+            self._axis_spins[name].valueChanged.connect(lambda value, role=name: self._axis_spin_changed(role, value))
+        self._refresh_axis_selectors()
         joystick_layout.addLayout(feedback_grid)
 
         self.run_button = QPushButton("Start measurement")
@@ -248,14 +279,28 @@ class MainWindow(QMainWindow):
 
         title = QLabel("THRUST")
         title.setObjectName("appTitle")
-        subtitle = QLabel("UAV CONTROL PERFORMANCE · MEASUREMENT CENTER")
-        subtitle.setObjectName("appSubtitle")
         title_row = QHBoxLayout()
-        title_block = QVBoxLayout()
-        title_block.addWidget(title)
-        title_block.addWidget(subtitle)
-        title_row.addLayout(title_block)
+        title_row.addWidget(title)
         title_row.addStretch()
+        self.appearance_button = QToolButton()
+        self.appearance_button.setObjectName("appearanceButton")
+        self.appearance_button.setText("◐")
+        self.appearance_button.setToolTip("Choose system, dark or light colors")
+        self.appearance_button.setAccessibleName("Appearance")
+        self.appearance_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.theme_menu = QMenu(self.appearance_button)
+        self.theme_actions: dict[str, Any] = {}
+        self.theme_action_group = QActionGroup(self.theme_menu)
+        self.theme_action_group.setExclusive(True)
+        for label, value in (("System", "system"), ("Dark", "dark"), ("Light", "light")):
+            action = self.theme_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(value == self.theme_mode)
+            self.theme_action_group.addAction(action)
+            action.triggered.connect(lambda _checked=False, selected=value: self._set_theme_mode(selected))
+            self.theme_actions[value] = action
+        self.appearance_button.setMenu(self.theme_menu)
+        title_row.addWidget(self.appearance_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -264,17 +309,6 @@ class MainWindow(QMainWindow):
         session_actions_layout.addWidget(self.connect_button)
         session_actions_layout.addWidget(self.disconnect_button)
         session_actions_layout.addWidget(self.advanced_button)
-        session_actions_layout.addSpacing(12)
-        theme_label = QLabel("Appearance:")
-        session_actions_layout.addWidget(theme_label)
-        self.theme_selector = QComboBox()
-        for label, value in (("System", "system"), ("Dark", "dark"), ("Light", "light")):
-            self.theme_selector.addItem(label, value)
-        theme_index = self.theme_selector.findData(self.theme_mode)
-        self.theme_selector.setCurrentIndex(theme_index if theme_index >= 0 else 0)
-        self.theme_selector.setToolTip("Follow the system appearance or select a fixed color theme")
-        self.theme_selector.currentIndexChanged.connect(self._theme_selection_changed)
-        session_actions_layout.addWidget(self.theme_selector)
 
         session_ribbon = QGroupBox("Measurement session")
         session_ribbon_layout = QHBoxLayout(session_ribbon)
@@ -294,22 +328,19 @@ class MainWindow(QMainWindow):
         controls_scroll.setWidget(controls_panel)
         controls_scroll.setMinimumWidth(300)
 
-        log_panel = QWidget()
+        log_panel = QGroupBox("Session log")
         log_layout = QVBoxLayout(log_panel)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-        log_layout.setSpacing(6)
-        log_title = QLabel("Session log")
-        log_title.setObjectName("sectionTitle")
-        log_layout.addWidget(log_title)
+        log_layout.setContentsMargins(8, 12, 8, 8)
+        log_layout.setSpacing(0)
         log_layout.addWidget(self.log_output, 1)
 
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.content_splitter.setChildrenCollapsible(False)
         self.content_splitter.addWidget(controls_scroll)
         self.content_splitter.addWidget(log_panel)
-        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(0, 1)
         self.content_splitter.setStretchFactor(1, 1)
-        self.content_splitter.setSizes([400, 720])
+        self.content_splitter.setSizes([560, 560])
 
         root.addLayout(title_row)
         root.addWidget(session_ribbon)
@@ -366,12 +397,48 @@ class MainWindow(QMainWindow):
             return False
         return self._system_palette.color(QPalette.ColorRole.Window).lightness() < 128
 
-    def _theme_selection_changed(self, _index: int) -> None:
-        if not hasattr(self, "theme_selector"):
-            return
-        self.theme_mode = str(self.theme_selector.currentData() or "system")
+    def _set_theme_mode(self, theme_mode: str) -> None:
+        self.theme_mode = theme_mode if theme_mode in {"system", "dark", "light"} else "system"
         self.settings.setValue("appearance/theme", self.theme_mode)
+        for key, action in self.theme_actions.items():
+            action.setChecked(key == self.theme_mode)
         self._apply_theme()
+
+    def _axis_count(self) -> int:
+        joystick = self.common_page.joystick
+        if self.common_page.joystick_active and joystick is not None:
+            try:
+                return max(1, int(joystick.get_numaxes()))
+            except Exception:
+                pass
+        return 17
+
+    def _refresh_axis_selectors(self) -> None:
+        if not hasattr(self, "axis_selectors"):
+            return
+        count = self._axis_count()
+        for role, selector in self.axis_selectors.items():
+            selected_axis = self._axis_spins[role].value()
+            selector.blockSignals(True)
+            selector.clear()
+            for axis_index in range(count):
+                selector.addItem(f"Axis {axis_index}", axis_index)
+            if selected_axis >= count:
+                selector.addItem(f"Axis {selected_axis} (unavailable)", selected_axis)
+            selector.setCurrentIndex(max(0, selector.findData(selected_axis)))
+            selector.blockSignals(False)
+
+    def _axis_selection_changed(self, role: str) -> None:
+        axis_index = self.axis_selectors[role].currentData()
+        if isinstance(axis_index, int):
+            self._axis_spins[role].setValue(axis_index)
+            self._update_joystick_feedback(self.common_page.latest_axis_values)
+
+    def _axis_spin_changed(self, role: str, value: int) -> None:
+        selector = self.axis_selectors.get(role)
+        if selector is None or selector.currentData() == value:
+            return
+        self._refresh_axis_selectors()
 
     def _system_theme_changed(self, *_args: object) -> None:
         if self.theme_mode == "system":
@@ -428,8 +495,8 @@ class MainWindow(QMainWindow):
                 QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 5px; color: {colors['accent']}; }}
                 QLabel {{ color: {colors['text']}; background: transparent; }}
                 QLabel#appTitle {{ color: {colors['text']}; font-size: 30px; font-weight: 800; }}
-                QLabel#appSubtitle, QLabel#sectionTitle {{ color: {colors['muted']}; }}
-                QLabel#sectionTitle {{ font-weight: 700; }}
+                QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 22px; padding: 0; }}
+                QToolButton#appearanceButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; background: {colors['surface_alt']}; }}
                 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
                 QPlainTextEdit#sessionLog {{ background: {colors['log']}; font-family: monospace; font-size: 12px; }}
                 QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
@@ -474,7 +541,8 @@ class MainWindow(QMainWindow):
             if desired == Qt.Orientation.Vertical:
                 self.content_splitter.setSizes([340, 460])
             else:
-                self.content_splitter.setSizes([400, max(500, self.width() - 450)])
+                half = max(1, self.content_splitter.width() // 2)
+                self.content_splitter.setSizes([half, half])
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
@@ -507,15 +575,17 @@ class MainWindow(QMainWindow):
         self.joystick_led.style().unpolish(self.joystick_led)
         self.joystick_led.style().polish(self.joystick_led)
         self.joystick_status_text.setText(status)
+        self._refresh_axis_selectors()
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
 
     def _update_joystick_feedback(self, values: object) -> None:
         if not isinstance(values, list):
             return
-        for index, name in enumerate(("LX", "LY", "RY", "RX")):
-            value = float(values[index]) if index < len(values) else 0.0
-            self.joystick_bars[name].setValue(int(max(-1.0, min(1.0, value)) * 100))
+        for role, bar in self.joystick_bars.items():
+            axis_index = self._axis_spins[role].value()
+            value = float(values[axis_index]) if 0 <= axis_index < len(values) else 0.0
+            bar.setValue(int(max(-1.0, min(1.0, value)) * 100))
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
@@ -644,6 +714,7 @@ class MainWindow(QMainWindow):
         self.test_combo.blockSignals(False)
         for button_mode, button in self.mode_buttons.items():
             button.setChecked(button_mode == mode)
+        self.axis_rows["RESET"].setVisible(mode == "SIMPLE")
         self.current_manifest = None
         if matching:
             self._load_selected_test()
@@ -832,6 +903,12 @@ class MainWindow(QMainWindow):
                     if self.offline_mode
                     else self._configuration_from_web_test(test)
                 )
+                # Joystick channel assignments and break/reset axes are local hardware settings,
+                # so they must override the test definition for both online and offline runs.
+                config.axis_map = dict(runtime["axis_map"])
+                config.deadzone = list(runtime["deadzone"])
+                config.break_axis = int(runtime["break_axis"])
+                config.reset_axis = int(runtime["reset_axis"])
                 config.user = participant_code
                 config.profile_name = profile_name
                 config.validate()
