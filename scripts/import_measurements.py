@@ -11,6 +11,7 @@ import base64
 import getpass
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -137,7 +138,10 @@ def read_compressed(path: Path) -> bytes:
     if path.name.lower().endswith(".gz"):
         # The analyzer has already read and validated the complete input stream.
         return data
-    return gzip.compress(data, compresslevel=6, mtime=0)
+    buffer = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=buffer, compresslevel=6, mtime=0) as stream:
+        stream.write(data)
+    return buffer.getvalue()
 
 
 class MeasurementImporter:
