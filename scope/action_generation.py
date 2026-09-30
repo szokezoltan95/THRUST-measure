@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import random
+import math
 from typing import Any
 
 AXES = ("LX", "LY", "RY", "RX")
@@ -16,7 +17,13 @@ DEFAULT_ACTION_SETTINGS: dict[str, Any] = {
 }
 
 
-def validate_action_settings(settings: dict[str, Any]) -> None:
+def _quantize(normalized_value: float, stick_max: int) -> int:
+    # Match JavaScript Math.round so the browser and measure validate/build the
+    # same discrete levels, including half-value boundaries.
+    return math.floor(normalized_value * stick_max + 0.5)
+
+
+def validate_action_settings(settings: dict[str, Any], stick_max: int | None = None) -> None:
     intervals = settings.get("intervals")
     if not isinstance(intervals, dict):
         raise ValueError("action_settings.intervals must be an object")
@@ -41,6 +48,18 @@ def validate_action_settings(settings: dict[str, Any]) -> None:
     probability = settings.get("single_gimbal_probability")
     if not isinstance(probability, (int, float)) or not 0 <= probability <= 1:
         raise ValueError("action_settings.single_gimbal_probability must be between 0 and 1")
+    if stick_max is not None:
+        for axis in AXES:
+            low, high = intervals[axis]
+            quantized = {
+                _quantize(low + (high - low) * index / (points - 1), stick_max)
+                for index in range(points)
+            }
+            if len(quantized) != points:
+                raise ValueError(
+                    f"Interval for {axis} and points_per_axis produce duplicate joystick values; "
+                    "widen the interval, reduce the point count or increase stick_max"
+                )
 
 
 def _axis_values(settings: dict[str, Any], stick_max: int) -> list[list[int]]:
@@ -49,10 +68,10 @@ def _axis_values(settings: dict[str, Any], stick_max: int) -> list[list[int]]:
     for axis in AXES:
         low, high = settings["intervals"][axis]
         levels = [low + (high - low) * index / (point_count - 1) for index in range(point_count)]
-        values.append(list(dict.fromkeys(round(value * stick_max) for value in levels)))
+        values.append(list(dict.fromkeys(_quantize(value, stick_max) for value in levels)))
     for axis, axis_levels in zip(AXES, values):
-        if len(axis_levels) < 2:
-            raise ValueError(f"Interval for {axis} produces fewer than two joystick values")
+        if len(axis_levels) != point_count:
+            raise ValueError(f"Interval for {axis} produces duplicate joystick values")
     return values
 
 
