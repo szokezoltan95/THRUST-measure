@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from thrust.analysis.response_metrics import estimate_response_onset, normalized_step_metrics
+
 REQUIRED_COLUMNS = {"Time[s]", "POSX", "POSY", "REQX", "REQY"}
 
 
@@ -44,6 +46,7 @@ def _step_response(rows: list[dict[str, float]], request: str, response: str, hz
     ]
     pre_count = max(3, round(hz * 0.1))
     segments: list[list[float]] = []
+    metric_rows: list[dict[str, float | None]] = []
     for order, index in enumerate(transitions):
         next_index = transitions[order + 1] if order + 1 < len(transitions) else len(rows)
         end = min(next_index, index + max(10, round(5.0 * hz)))
@@ -55,11 +58,27 @@ def _step_response(rows: list[dict[str, float]], request: str, response: str, hz
         if abs(delta) < 1e-9:
             continue
         segment = [(rows[position][response] - baseline) / delta for position in range(index, end)]
-        if all(math.isfinite(value) for value in segment):
-            segments.append(segment)
-    return _aggregate_segments(segments, hz)
+        if not all(math.isfinite(value) for value in segment):
+            continue
+        segment_time = [rows[position]["Time[s]"] - rows[index]["Time[s]"] for position in range(index, end)]
+        segments.append(segment)
+        onset = estimate_response_onset(segment_time, segment, history, delta, hz)
+        metric_rows.append(normalized_step_metrics(segment_time, segment, onset))
 
-
+    result = _aggregate_segments(segments, hz)
+    metric_names = (
+        "reaction_delay_s", "rise_time_s", "overshoot_pct", "settling_time_s",
+        "steady_state_error_pct", "tracking_rmse",
+    )
+    metrics: dict[str, Any] = {"aggregation": "median", "step_count": len(metric_rows)}
+    for name in metric_names:
+        values = [float(item[name]) for item in metric_rows if item.get(name) is not None]
+        metrics[name] = statistics.median(values) if values else None
+        metrics[f"{name}_mean"] = statistics.fmean(values) if values else None
+    metrics["mean_std"] = statistics.fmean(result["std"]) if result["std"] else None
+    metrics["mean_std_mean"] = metrics["mean_std"]
+    result["metrics"] = metrics
+    return result
 def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> dict[str, Any]:
     source = Path(path)
     if not source.is_file():
