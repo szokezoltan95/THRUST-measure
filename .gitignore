@@ -20,4 +20,4 @@ Thumbs.db
 *.log
 
 # runtime data
-Documents/THRUST/
+Documents/THRUST/*.egg-info/
