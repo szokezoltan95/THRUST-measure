@@ -81,7 +81,7 @@ class ScopeConfig:
     prompt_color: str = "#ff0000"
 
     def validate(self) -> None:
-        validate_action_settings(self.action_settings)
+        validate_action_settings(self.action_settings, self.stick_max)
         if not self.user.strip():
             raise ValueError("User / pilot name cannot be empty")
         if self.fps < 10:
