@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 
+FIXED_Y_LIMITS = (-0.2, 1.3)
+
+
 def _numbers(value: Any) -> list[float]:
     if not isinstance(value, list):
         return []
@@ -20,8 +23,64 @@ def _numbers(value: Any) -> list[float]:
     return result
 
 
+def _crossing_time(time_s: list[float], values: list[float], level: float) -> float | None:
+    for index, value in enumerate(values):
+        if value < level:
+            continue
+        if index == 0:
+            return time_s[0]
+        previous = values[index - 1]
+        delta = value - previous
+        if math.isclose(delta, 0.0):
+            return time_s[index]
+        fraction = (level - previous) / delta
+        return time_s[index - 1] + fraction * (time_s[index] - time_s[index - 1])
+    return None
+
+
+def _metric_text(channel: dict[str, Any], time_s: list[float],
+                 mean: list[float], std: list[float]) -> str:
+    metrics = channel.get("metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
+
+    t10 = metrics.get("reaction_delay_s")
+    if t10 is None:
+        t10 = _crossing_time(time_s, mean, 0.1)
+    t90 = _crossing_time(time_s, mean, 0.9)
+    rise = metrics.get("rise_time_s")
+    if rise is None and t10 is not None and t90 is not None:
+        rise = max(0.0, t90 - t10)
+
+    overshoot = metrics.get("overshoot_pct")
+    if overshoot is None:
+        overshoot = max(0.0, (max(mean) - 1.0) * 100.0) if mean else None
+    max_sd = max(std) if std else None
+    rmse = metrics.get("tracking_rmse")
+    if rmse is None and mean:
+        start = next((i for i, value in enumerate(mean) if value >= 0.1), 0)
+        values = mean[start:]
+        rmse = math.sqrt(sum((value - 1.0) ** 2 for value in values) / len(values)) if values else None
+    settling = metrics.get("settling_time_s")
+
+    def fmt(value: Any, suffix: str = "", digits: int = 2) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return "—"
+        if not math.isfinite(number):
+            return "—"
+        return f"{number:.{digits}f}{suffix}"
+
+    return "\n".join((
+        f"Delay (10%): {fmt(t10, ' s')}",
+        f"t90: {fmt(t90, ' s')} · rise: {fmt(rise, ' s')}",
+        f"Overshoot: {fmt(overshoot, '%', 1)} · max SD: {fmt(max_sd)}",
+        f"RMSE: {fmt(rmse)} · settling: {fmt(settling, ' s')}",
+    ))
+
+
 def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]) -> Path:
-    """Save the analysis' averaged and median responses as a local PDF."""
+    """Save averaged and median response curves as a local PDF."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -31,23 +90,22 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
     if not isinstance(channels, dict) or not channels:
         raise ValueError("Analysis has no normalized response channels to plot.")
 
-    preferred = ("LX", "LY", "RY", "RX", "x", "y")
-    names = [key for key in preferred if key in channels]
-    names.extend(key for key in channels if key not in names)
-    is_scope = len(names) > 2
+    is_scope = any(key in channels for key in ("LX", "LY", "RY", "RX"))
     if is_scope:
+        # Row-major order: both Y axes above, then both X axes.
+        order = ["LY", "RY", "LX", "RX"]
+        titles = {"LY": "L · Y", "RY": "R · Y", "LX": "L · X", "RX": "R · X"}
+        order = [key for key in order if key in channels]
         rows, columns = 2, 2
-        order = [key for key in ("LX", "LY", "RY", "RX") if key in names]
-        titles = {"LX": "Left gimbal · X", "LY": "Left gimbal · Y",
-                  "RY": "Right gimbal · Y", "RX": "Right gimbal · X"}
     else:
-        rows, columns = len(names), 1
-        order = names
-        titles = {"x": "Horizontal response", "y": "Vertical response"}
+        order = [key for key in ("x", "y") if key in channels]
+        order.extend(key for key in channels if key not in order)
+        titles = {"x": "X", "y": "Y"}
+        rows, columns = len(order), 1
 
     figure, axes_grid = plt.subplots(
         rows, columns, figsize=(13, 8.5 if is_scope else 8),
-        squeeze=False, sharex=False, facecolor="white",
+        squeeze=False, facecolor="white",
     )
     axes = list(axes_grid.flat)
     horizon = normalized.get("horizon_s")
@@ -66,10 +124,10 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
         median = _numbers(channel.get("median"))
         std = _numbers(channel.get("std"))
         time_s = _numbers(channel.get("time_s"))
-        if not time_s and isinstance(normalized, dict):
+        if not time_s:
             time_s = _numbers(normalized.get("time_s"))
         count = max(len(mean), len(median))
-        sampling_hz = normalized.get("sampling_hz", 100) if isinstance(normalized, dict) else 100
+        sampling_hz = normalized.get("sampling_hz", 100)
         try:
             sampling_hz = float(sampling_hz)
         except (TypeError, ValueError):
@@ -78,10 +136,10 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
             time_s = [i / (sampling_hz if sampling_hz > 0 else 100.0) for i in range(count)]
         else:
             time_s = time_s[:count]
-
         mean = mean[:len(time_s)]
         median = median[:len(time_s)]
         std = std[:len(mean)]
+
         if not time_s or (not mean and not median):
             axis.text(0.5, 0.5, "No valid step-response data",
                       transform=axis.transAxes, ha="center", va="center", color="#667085")
@@ -98,23 +156,27 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
                           linewidth=2.2, label="Median")
             data_end = max(time_s) if time_s else 0.0
             axis.set_xlim(0, max(data_end, horizon if horizon > 0 else 0.1))
-            axis.legend(loc="best", frameon=False, ncol=3, fontsize=9)
+            axis.legend(loc="upper right", frameon=False, ncol=3, fontsize=8)
+            metric_text = _metric_text(channel, time_s, mean, std)
+            axis.text(
+                0.98, 0.035, metric_text, transform=axis.transAxes,
+                ha="right", va="bottom", fontsize=7.5, linespacing=1.35,
+                family="monospace",
+                bbox={"boxstyle": "round,pad=0.45", "facecolor": "white",
+                      "edgecolor": "#d9e0e8", "alpha": 0.92},
+            )
+
+        axis.set_ylim(*FIXED_Y_LIMITS)
         axis.set_title(titles.get(key, key), loc="left", fontsize=12, fontweight="bold", pad=9)
         axis.set_ylabel("Normalized response")
+        axis.set_xlabel("Time [s]")
         axis.grid(True, color="#d9e0e8", linewidth=0.7, alpha=0.8)
         axis.set_axisbelow(True)
         axis.spines["top"].set_visible(False)
         axis.spines["right"].set_visible(False)
         axis.spines["left"].set_color("#aab4c0")
         axis.spines["bottom"].set_color("#aab4c0")
-        steps = channel.get("transition_count")
-        if steps is not None:
-            axis.text(0.99, 0.98, f"{steps} steps", transform=axis.transAxes,
-                      ha="right", va="top", fontsize=8, color="#667085")
 
-    for axis in axes:
-        if axis in figure.axes:
-            axis.set_xlabel("Time after input change [s]")
     kind = "SCoPE" if is_scope else "SimPLE"
     figure.suptitle(f"{kind} · normalized step response", fontsize=17,
                     fontweight="bold", color="#202b38")
