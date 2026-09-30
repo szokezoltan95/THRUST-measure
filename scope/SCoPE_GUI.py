@@ -79,8 +79,11 @@ class SCoPE_GUI:
             self.screen.set_clip(previous_clip)
             sx = cx + stick_x * scale
             sy = cy - stick_y * scale
+            previous_clip = self.screen.get_clip()
+            self.screen.set_clip(rect)
             pygame.draw.circle(self.screen, self.colors["stick_fill"], (int(sx), int(sy)), self.stick_radius)
             pygame.draw.circle(self.screen, self.colors["stick_outline"], (int(sx), int(sy)), self.stick_radius, self.stick_width)
+            self.screen.set_clip(previous_clip)
         self.screen.blit(self._font.render(self.action_text, True, self.colors["label"]), (24, 20))
         self.screen.blit(self._font.render(self.counter_text, True, self.colors["label"]), (24, height - 62))
         if self.prompt_visible and self.prompt_text:
