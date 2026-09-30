@@ -13,6 +13,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from thrust.analysis.response_metrics import estimate_response_onset, normalized_step_metrics
+
 REQUIRED_COLUMNS = {"TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"}
 OPTIONAL_COLUMNS = {"ACTION_ID", "IN_RANGE", "LEVR", "BUTT", "SIDL", "SIDR"}
 LEGACY_COLUMN_NAMES = {
@@ -57,40 +59,16 @@ def _crossing_time(time: list[float], values: list[float], level: float) -> floa
     return None
 
 
-def _step_metrics(time: list[float], curve: list[float], std: list[float]) -> dict[str, float | None]:
-    count = min(len(time), len(curve))
-    empty = {
-        "reaction_delay_s": None, "rise_time_s": None, "overshoot_pct": None,
-        "settling_time_s": None, "steady_state_error_pct": None,
-        "tracking_rmse": None, "mean_std": None,
-    }
-    if count < 3:
-        return empty
-    time = time[:count]
-    curve = [float(value) for value in curve[:count]]
-    t10 = _crossing_time(time, curve, 0.1)
-    t90 = _crossing_time(time, curve, 0.9)
-    peak = max(curve)
-    final_window = max(1, count // 10)
-    final_value = sum(curve[-final_window:]) / final_window
-    last_outside = -1
-    for index, value in enumerate(curve):
-        if abs(value - 1.0) > 0.05:
-            last_outside = index
-    settling = time[last_outside] if 0 <= last_outside < count - 1 else None
-    rmse_start = next((index for index, value in enumerate(curve) if value >= 0.1), 0)
-    rmse = math.sqrt(sum((value - 1.0) ** 2 for value in curve[rmse_start:]) / max(1, count - rmse_start))
-    std_values = _finite(std[:count])
-    return {
-        "reaction_delay_s": t10,
-        "rise_time_s": max(0.0, t90 - t10) if t10 is not None and t90 is not None else None,
-        "overshoot_pct": max(0.0, (peak - 1.0) * 100.0),
-        "settling_time_s": settling,
-        "steady_state_error_pct": abs(1.0 - final_value) * 100.0,
-        "tracking_rmse": rmse,
-        "mean_std": sum(std_values) / len(std_values) if std_values else None,
-    }
-
+def _step_metrics(
+    time: list[float],
+    curve: list[float],
+    std: list[float],
+    reaction_delay_s: float | None,
+) -> dict[str, float | None]:
+    metrics = normalized_step_metrics(time, curve, reaction_delay_s)
+    std_values = _finite(std[:min(len(time), len(curve))])
+    metrics["mean_std"] = sum(std_values) / len(std_values) if std_values else None
+    return metrics
 
 def _aggregate_step_metrics(metrics: list[dict[str, float | None]]) -> dict[str, Any]:
     result: dict[str, Any] = {"aggregation": "median", "step_count": len(metrics)}
@@ -146,7 +124,10 @@ def _normalized_channel_curve(
             for position in range(index, end)
         ]
         segments.append(segment)
-        metric_rows.append(_step_metrics(segment_time, segment, []))
+        response_onset_s = estimate_response_onset(
+            segment_time, segment, baseline_values, request_delta, sampling_hz,
+        )
+        metric_rows.append(_step_metrics(segment_time, segment, [], response_onset_s))
     mean_curve: list[float] = []
     median_curve: list[float] = []
     std_curve: list[float] = []
