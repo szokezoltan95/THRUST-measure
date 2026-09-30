@@ -341,9 +341,9 @@ class MainWindow(QMainWindow):
         self.run_button.clicked.connect(self._run_selected_measurement)
 
         self.local_graphs_checkbox = QCheckBox("Create local response graphs after measurement")
-        self.local_graphs_checkbox.setToolTip("Save an SVG graph of the averaged and median step responses beside the raw log.")
+        self.local_graphs_checkbox.setToolTip("Generate and open a Matplotlib PDF of the averaged and median response curves.")
         self.local_graphs_checkbox.setChecked(
-            self.settings.value("measurement/local_response_graphs", True, type=bool)
+            self.settings.value("measurement/local_response_graphs", False, type=bool)
         )
         self.local_graphs_checkbox.toggled.connect(
             lambda enabled: self.settings.setValue("measurement/local_response_graphs", enabled)
@@ -1335,6 +1335,7 @@ class MainWindow(QMainWindow):
                 try:
                     graph_path = save_local_response_graph(raw_path, analysis)
                     self.append_log(f"Local response graph saved: {graph_path}")
+                    self._open_local_file(graph_path)
                 except Exception as graph_error:
                     self.append_log(f"Local response graph could not be created: {graph_error}")
 
