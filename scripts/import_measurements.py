@@ -364,6 +364,18 @@ class MeasurementImporter:
         filename = normalized_output_name(info, test_descriptor, analysis_started_at)
         output_path = self.output_dir / filename
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        if output_path.exists() and hashlib.sha256(output_path.read_bytes()).hexdigest() != normalized_digest:
+            stem, suffix = output_path.name.removesuffix(".tsv.gz"), ".tsv.gz"
+            duplicate = 2
+            while (self.output_dir / f"{stem}_{duplicate}{suffix}").exists():
+                existing = self.output_dir / f"{stem}_{duplicate}{suffix}"
+                if hashlib.sha256(existing.read_bytes()).hexdigest() == normalized_digest:
+                    output_path = existing
+                    break
+                duplicate += 1
+            else:
+                output_path = self.output_dir / f"{stem}_{duplicate}{suffix}"
+            filename = output_path.name
         temporary = output_path.with_suffix(output_path.suffix + ".tmp")
         temporary.write_bytes(normalized_bytes)
         temporary.replace(output_path)
