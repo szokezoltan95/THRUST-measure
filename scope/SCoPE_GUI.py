@@ -64,7 +64,6 @@ class SCoPE_GUI:
         ):
             rect = pygame.Rect(origin_x, y, size, size)
             pygame.draw.rect(self.screen, self.colors["gimbal"], rect)
-            self._draw_gimbal_guides(rect)
             cx, cy = rect.center
             zx = cx + target_x * scale
             zy = cy - target_y * scale
@@ -77,6 +76,9 @@ class SCoPE_GUI:
             pygame.draw.ellipse(self.screen, zone_color, zone)
             pygame.draw.ellipse(self.screen, zone_outline, zone, max(1, self.zone_width))
             self.screen.set_clip(previous_clip)
+            # The target must remain behind the white guides, including when
+            # its edge reaches a corner or side tick.
+            self._draw_gimbal_guides(rect)
             sx = cx + stick_x * scale
             sy = cy - stick_y * scale
             pygame.draw.circle(self.screen, self.colors["stick_fill"], (int(sx), int(sy)), self.stick_radius)
@@ -100,16 +102,17 @@ class SCoPE_GUI:
             (left, top, 1, 1), (right, top, -1, 1),
             (left, bottom, 1, -1), (right, bottom, -1, -1),
         ):
-            # Filled rectangles share the same square at the joint so their
-            # corners meet cleanly instead of forming a stepped line join.
+            # Keep each stroke inside the gimbal; its outer edge exactly
+            # follows the panel boundary. The two filled rectangles overlap
+            # in a full width-by-width square for a clean, square joint.
             horizontal = pygame.Rect(
                 x if horizontal_direction > 0 else x - corner + 1,
-                y - width // 2,
+                y if vertical_direction > 0 else y - width + 1,
                 corner,
                 width,
             )
             vertical = pygame.Rect(
-                x - width // 2,
+                x if horizontal_direction > 0 else x - width + 1,
                 y if vertical_direction > 0 else y - corner + 1,
                 width,
                 corner,
