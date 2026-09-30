@@ -64,6 +64,7 @@ class SCoPE_GUI:
         ):
             rect = pygame.Rect(origin_x, y, size, size)
             pygame.draw.rect(self.screen, self.colors["gimbal"], rect)
+            self._draw_gimbal_guides(rect)
             cx, cy = rect.center
             zx = cx + target_x * scale
             zy = cy - target_y * scale
@@ -76,9 +77,6 @@ class SCoPE_GUI:
             pygame.draw.ellipse(self.screen, zone_color, zone)
             pygame.draw.ellipse(self.screen, zone_outline, zone, max(1, self.zone_width))
             self.screen.set_clip(previous_clip)
-            # The target must remain behind the white guides, including when
-            # its edge reaches a corner or side tick.
-            self._draw_gimbal_guides(rect)
             sx = cx + stick_x * scale
             sy = cy - stick_y * scale
             pygame.draw.circle(self.screen, self.colors["stick_fill"], (int(sx), int(sy)), self.stick_radius)
