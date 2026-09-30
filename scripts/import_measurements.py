@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+import zlib
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
@@ -194,7 +195,7 @@ def normalize_raw_log(path: Path, mode: str) -> tuple[bytes, bool]:
     try:
         raw = gzip.decompress(compressed) if path.name.lower().endswith(".gz") else path.read_bytes()
         source = raw.decode("utf-8-sig")
-    except (OSError, UnicodeDecodeError, gzip.BadGzipFile) as exc:
+    except (OSError, EOFError, UnicodeDecodeError, gzip.BadGzipFile, zlib.error) as exc:
         raise ImportProblem(f"Could not decode raw log {path.name}: {exc}") from exc
     rows = csv.reader(StringIO(source, newline=""), delimiter="\t")
     try:
