@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import (
 from scope.scope_config import ScopeConfig
 from simple.simple_config import SimpleConfig
 from thrust.analysis.artifact import build_analysis_artifact, save_analysis_artifact
+from thrust.analysis.local_graph import save_local_response_graph
 from thrust.analysis.scope_log import analyze_scope_log
 from thrust.analysis.simple_log import analyze_simple_log
 from thrust.runners.simple_runner import run_simple
@@ -339,6 +340,15 @@ class MainWindow(QMainWindow):
         self.run_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.run_button.clicked.connect(self._run_selected_measurement)
 
+        self.local_graphs_checkbox = QCheckBox("Create local response graphs after measurement")
+        self.local_graphs_checkbox.setToolTip("Save an SVG graph of the averaged and median step responses beside the raw log.")
+        self.local_graphs_checkbox.setChecked(
+            self.settings.value("measurement/local_response_graphs", True, type=bool)
+        )
+        self.local_graphs_checkbox.toggled.connect(
+            lambda enabled: self.settings.setValue("measurement/local_response_graphs", enabled)
+        )
+
         self.measurement_status = {}
         status_row = QHBoxLayout()
         status_row.setContentsMargins(0, 0, 0, 0)
@@ -414,6 +424,7 @@ class MainWindow(QMainWindow):
         root.addLayout(title_row)
         root.addWidget(session_ribbon)
         root.addWidget(controls_panel, 1)
+        root.addWidget(self.local_graphs_checkbox)
         root.addWidget(self.run_button)
         root.addLayout(status_row)
         self.footer_log_label = QLabel("Ready")
@@ -1228,6 +1239,7 @@ class MainWindow(QMainWindow):
         )
 
         uploaded_to_webdb = False
+        create_local_graph = self.local_graphs_checkbox.isChecked()
         try:
             if not self.common_page.joystick_active:
                 message = "Cannot start measurement: no joystick is connected."
@@ -1319,6 +1331,12 @@ class MainWindow(QMainWindow):
             )
             analysis_path = save_analysis_artifact(raw_path, analysis)
             self.append_log(f"Measurement analysis saved: {analysis_path}")
+            if create_local_graph:
+                try:
+                    graph_path = save_local_response_graph(raw_path, analysis)
+                    self.append_log(f"Local response graph saved: {graph_path}")
+                except Exception as graph_error:
+                    self.append_log(f"Local response graph could not be created: {graph_error}")
 
             if self.offline_mode:
                 self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
