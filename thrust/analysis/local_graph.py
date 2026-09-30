@@ -43,9 +43,8 @@ def _metric_text(channel: dict[str, Any], time_s: list[float],
     metrics = channel.get("metrics")
     metrics = metrics if isinstance(metrics, dict) else {}
 
-    t10 = metrics.get("reaction_delay_s")
-    if t10 is None:
-        t10 = _crossing_time(time_s, mean, 0.1)
+    onset = metrics.get("reaction_delay_s")
+    t10 = _crossing_time(time_s, mean, 0.1)
     t90 = _crossing_time(time_s, mean, 0.9)
     rise = metrics.get("rise_time_s")
     if rise is None and t10 is not None and t90 is not None:
@@ -72,13 +71,14 @@ def _metric_text(channel: dict[str, Any], time_s: list[float],
         return f"{number:.{digits}f}{suffix}"
 
     return "\n".join((
-        f"Delay (10%): {fmt(t10, ' s')}",
-        f"t90: {fmt(t90, ' s')} · rise: {fmt(rise, ' s')}",
-        f"Overshoot: {fmt(overshoot, '%', 1)} · max SD: {fmt(max_sd)}",
-        f"RMSE: {fmt(rmse)} · settling: {fmt(settling, ' s')}",
+        f"Onset: {fmt(onset, ' s')}",
+        f"t90: {fmt(t90, ' s')}",
+        f"Rise 10–90%: {fmt(rise, ' s')}",
+        f"Overshoot: {fmt(overshoot, '%', 1)}",
+        f"Max SD: {fmt(max_sd)}",
+        f"RMSE: {fmt(rmse)}",
+        f"Settling: {fmt(settling, ' s')}",
     ))
-
-
 def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]) -> Path:
     """Save averaged and median response curves as a local PDF."""
     import matplotlib
@@ -160,7 +160,7 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
             metric_text = _metric_text(channel, time_s, mean, std)
             axis.text(
                 0.98, 0.035, metric_text, transform=axis.transAxes,
-                ha="right", va="bottom", fontsize=7.5, linespacing=1.35,
+                ha="right", va="bottom", fontsize=6.8, linespacing=1.12,
                 family="monospace",
                 bbox={"boxstyle": "round,pad=0.45", "facecolor": "white",
                       "edgecolor": "#d9e0e8", "alpha": 0.92},
@@ -179,8 +179,13 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
 
     kind = "SCoPE" if is_scope else "SimPLE"
     figure.suptitle(f"{kind} · normalized step response", fontsize=17,
-                    fontweight="bold", color="#202b38")
-    figure.tight_layout(rect=(0, 0, 1, 0.95))
+                    fontweight="bold", color="#202b38", y=0.985)
+    figure.text(
+        0.5, 0.955,
+        "Onset: sustained deviation above max(2% of input step, 3× baseline MAD)",
+        ha="center", va="top", fontsize=8, color="#667085",
+    )
+    figure.tight_layout(rect=(0, 0, 1, 0.925))
 
     raw_path = Path(raw_log_path)
     base = raw_path.name
