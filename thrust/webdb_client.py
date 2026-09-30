@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import re
+import threading
 from http.cookiejar import CookieJar
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ class WebDbClient:
         self.role: str | None = None
         self.account: dict[str, Any] | None = None
         self._opener = build_opener(HTTPCookieProcessor(CookieJar()))
+        self._request_lock = threading.RLock()
 
     @classmethod
     def from_environment(cls) -> "WebDbClient":
@@ -49,6 +51,24 @@ class WebDbClient:
         if not self.csrf_token:
             raise WebDbError("Web database did not return a CSRF token.")
         return payload
+
+    def report_presence(
+        self,
+        status: str,
+        *,
+        participant_id: str | None = None,
+        test_definition_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Report this desktop client's live state to WebDB."""
+        return self._request_json(
+            "/api/live/measure-presence",
+            method="POST",
+            body={
+                "status": status,
+                "participant_id": participant_id,
+                "test_definition_id": test_definition_id,
+            },
+        )
 
     def list_participants(self) -> list[dict[str, Any]]:
         return self._request_list("/api/admin/participants")
@@ -169,8 +189,9 @@ class WebDbClient:
             method=method,
         )
         try:
-            with self._opener.open(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with self._request_lock:
+                with self._opener.open(request, timeout=self.timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
             detail = ""
             if isinstance(exc, HTTPError):
