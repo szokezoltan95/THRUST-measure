@@ -101,9 +101,10 @@ class WebDbClient:
             headers={"Accept": "image/png, image/jpeg"},
         )
         try:
-            with self._opener.open(request, timeout=self.timeout) as response:
-                content_type = response.headers.get_content_type()
-                content = response.read(5_000_001)
+            with self._request_lock:
+                with self._opener.open(request, timeout=self.timeout) as response:
+                    content_type = response.headers.get_content_type()
+                    content = response.read(5_000_001)
         except (HTTPError, URLError, TimeoutError) as exc:
             raise WebDbError(f"Could not download SimPLE background: {exc}") from exc
         if len(content) > 5_000_000:
