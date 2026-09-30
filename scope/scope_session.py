@@ -131,7 +131,7 @@ def build_output_paths(config: ScopeConfig):
     logs_dir.mkdir(parents=True, exist_ok=True)
     safe_user = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in config.user.strip())
     profile = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in config.profile_name.strip()) or "default"
-    logfile_path = logs_dir / f"SCoPE_log_{safe_user}_{config.difficulty}_{profile}_{now:%Y%m%d_%H%M%S}.tsv"
+    logfile_path = logs_dir / f"THRUST_{safe_user}_{profile}_{now:%Y%m%d_%H%M%S}.tsv"
     return {"base_dir": scope_base, "logfile_path": logfile_path}
 
 
