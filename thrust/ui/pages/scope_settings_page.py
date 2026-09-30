@@ -235,6 +235,7 @@ class ScopeSettingsPage(QWidget):
             countdown_s=self.countdown_spin.value(),
             seed=int(seed_text) if seed_text else None,
             action_settings={
+                "generator_version": 1,
                 "intervals": {
                     axis: [bounds[0].value(), bounds[1].value()]
                     for axis, bounds in self.interval_spins.items()
