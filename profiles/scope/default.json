@@ -1,8 +1,7 @@
 {
   "debug_output": false,
   "user": "Pilot",
-  "difficulty": "hard",
-  "action_timeout_s": 3.0,
+  "action_timeout_s": 3,
   "hold_time_s": 0.5,
   "fps": 100,
   "stick_max": 1000,
@@ -28,13 +27,6 @@
   "output_root": "C:\\Users\\szoke\\Documents\\THRUST\\scope",
   "profile_name": "default",
   "use_dated_subfolders": true,
-  "save_raw_log": true,
-  "save_action_log": true,
-  "save_step_file": true,
-  "save_graph_pdf": true,
-  "auto_open_graph": true,
-  "run_evaluation": true,
-  "show_graph": false,
   "expert_mode": false,
   "gui_gimbal_size": 500,
   "gui_stick_zone": 200,
@@ -43,7 +35,7 @@
   "gui_zone_outline_width": 8,
   "gui_gimbal_border_width": 12,
   "gui_gimbal_cross_width": 6,
-  "screen_background": "#aaffff",
+  "screen_background": "#000000",
   "gimbal_background": "#808080",
   "stick_outline": "#1e2cff",
   "stick_fill": "#ffffff",
@@ -53,5 +45,30 @@
   "zone_ok_fill": "#00cc00",
   "grid_color": "#ffffff",
   "label_color": "#ffffff",
-  "prompt_color": "#ff0000"
+  "prompt_color": "#ff0000",
+  "action_settings": {
+    "generator_version": 1,
+    "intervals": {
+      "LX": [
+        -0.8,
+        0.8
+      ],
+      "LY": [
+        -0.8,
+        0.8
+      ],
+      "RY": [
+        -0.8,
+        0.8
+      ],
+      "RX": [
+        -0.8,
+        0.8
+      ]
+    },
+    "points_per_axis": 9,
+    "min_changed_axes": 1,
+    "max_changed_axes": 2,
+    "single_gimbal_probability": 0.5
+  }
 }
