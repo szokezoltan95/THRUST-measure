@@ -80,7 +80,7 @@ def _output_path(runtime: dict[str, Any], participant: str, profile: str) -> Pat
         root = root / f"{now.year}{now.strftime('%b').upper()}{now.day:02d}"
     logs = root / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    return logs / f"SimPLE_{_safe_name(participant)}_{_safe_name(profile)}_{now:%Y%m%d_%H%M%S}.tsv"
+    return logs / f"THRUST_{_safe_name(participant)}_{_safe_name(profile)}_{now:%Y%m%d_%H%M%S}.tsv"
 
 
 def _axis_value(controller, index: int) -> float:
