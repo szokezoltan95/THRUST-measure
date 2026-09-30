@@ -1333,7 +1333,7 @@ class MainWindow(QMainWindow):
             self.append_log(f"Measurement analysis saved: {analysis_path}")
             if create_local_graph:
                 try:
-                    graph_path = save_local_response_graph(raw_path, analysis)
+                    graph_path = save_local_response_graph(raw_path, analysis, participant_id=participant_code)
                     self.append_log(f"Local response graph saved: {graph_path}")
                     self._open_local_file(graph_path)
                 except Exception as graph_error:
