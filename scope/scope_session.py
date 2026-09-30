@@ -12,6 +12,7 @@ os.environ["SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"] = "1"
 
 import pygame
 
+from scope.action_generation import generate_next_target
 from scope.SCoPE_GUI import SCoPE_GUI
 from scope.scope_config import ScopeConfig
 from thrust.raw_compression import compress_raw_log
@@ -39,87 +40,6 @@ def emit_log(
         log_callback(message)
     if debug and getattr(config, "debug_output", False):
         print(message)
-
-
-def build_actions(stick_max: int):
-    return (
-        [-stick_max, 0, 0, 0],
-        [stick_max, 0, 0, 0],
-        [0, -stick_max, 0, 0],
-        [0, stick_max, 0, 0],
-        [0, 0, -stick_max, 0],
-        [0, 0, stick_max, 0],
-        [0, 0, 0, -stick_max],
-        [0, 0, 0, stick_max],
-        [-stick_max, -stick_max, 0, 0],
-        [stick_max, stick_max, 0, 0],
-        [stick_max, -stick_max, 0, 0],
-        [-stick_max, stick_max, 0, 0],
-        [0, 0, -stick_max, -stick_max],
-        [0, 0, stick_max, stick_max],
-        [0, 0, stick_max, -stick_max],
-        [0, 0, -stick_max, stick_max],
-    )
-
-
-def request_new_action(
-    difficulty: str,
-    shuffle_sequence: int,
-    action_shuffle: list[int],
-    actions,
-    stick_max: int,
-    config: ScopeConfig,
-    log_callback=None,
-):
-    if difficulty == "easy":
-        if shuffle_sequence < 15:
-            shuffle_sequence += 1
-        else:
-            shuffle_sequence = 0
-            random.shuffle(action_shuffle)
-        action_request = actions[action_shuffle[shuffle_sequence]]
-
-    elif difficulty == "medium":
-        stick_choice = random.choice([0, 1])
-        deflx_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        defly_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        if stick_choice == 0:
-            action_request = [deflx_choice, defly_choice, 0, 0]
-        else:
-            action_request = [0, 0, deflx_choice, defly_choice]
-
-    elif difficulty == "hard":
-        lx_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        ly_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        ry_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        rx_choice = random.choice(
-            [-stick_max * 0.9, (-stick_max / 2), 0, (stick_max / 2), stick_max * 0.9]
-        )
-        action_request = [lx_choice, ly_choice, ry_choice, rx_choice]
-
-    elif difficulty == "ultra":
-        action_request = [
-            random.randint(-stick_max, stick_max),
-            random.randint(-stick_max, stick_max),
-            random.randint(-stick_max, stick_max),
-            random.randint(-stick_max, stick_max),
-        ]
-    else:
-        raise ValueError("Invalid difficulty")
-
-    action_request = [int(v) for v in action_request]
-    emit_log(config, log_callback, f"New action requested: {action_request}", debug=True)
-    return action_request, shuffle_sequence
 
 
 def build_output_paths(config: ScopeConfig):
@@ -160,13 +80,11 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
     chmap = ("LX", "LY", "RY", "RX", "LEVR", "BUTT", "SIDL", "SIDR")
     acmap = ("LXRQ", "LYRQ", "RYRQ", "RXRQ", "IRRS", "ACTION_ID", "IN_RANGE")
 
-    action_shuffle = list(range(16))
     deadzone = config.deadzone
     fps = config.fps
     hold_time_frames = max(1, int(config.hold_time_s * fps))
     action_timeout_ns = int(config.action_timeout_s * 1_000_000_000)
     stick_max = config.stick_max
-    actions = build_actions(stick_max)
 
     emit_log(config, log_callback, "Building output paths...", debug=True)
     paths = build_output_paths(config)
@@ -242,27 +160,15 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
         action_completed = False
         in_range = 0
         inzone_timer = 0
-        shuffle_sequence = 0
         aborted = False
         abort_reason = ""
 
-        if config.seed is None:
-            random.seed(time.time_ns())
-            emit_log(config, log_callback, "Random seed initialized from current time.", debug=True)
-        else:
-            random.seed(config.seed)
-            emit_log(config, log_callback, f"Random seed set to {config.seed}.", debug=True)
-
-        random.shuffle(action_shuffle)
-        action_request, shuffle_sequence = request_new_action(
-            config.difficulty,
-            shuffle_sequence,
-            action_shuffle,
-            actions,
-            stick_max,
-            config,
-            log_callback,
-        )
+        random_seed = config.seed if config.seed is not None else time.time_ns()
+        config.seed = random_seed
+        rng = random.Random(random_seed)
+        emit_log(config, log_callback, f"Target generator seed: {random_seed}.", debug=True)
+        action_request = generate_next_target([0, 0, 0, 0], config.action_settings, stick_max, rng)
+        emit_log(config, log_callback, f"New target requested: {action_request}", debug=True)
 
         gui.updateStickZones(action_request)
         gui.set_action_text("Action: " + str(action_request))
@@ -315,15 +221,8 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
 
 
             if action_completed:
-                action_request, shuffle_sequence = request_new_action(
-                    config.difficulty,
-                    shuffle_sequence,
-                    action_shuffle,
-                    actions,
-                    stick_max,
-                    config,
-                    log_callback,
-                )
+                action_request = generate_next_target(action_request, config.action_settings, stick_max, rng)
+                emit_log(config, log_callback, f"New target requested: {action_request}", debug=True)
                 action_completed = False
                 inzone_timer = 0
                 gui.updateZoneColor(ok_state=False)
