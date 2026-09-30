@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QActionGroup, QColor, QFont, QGuiApplication, QPalette
+from PyQt6.QtCore import QSettings, QTimer, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QActionGroup, QColor, QDesktopServices, QFont, QGuiApplication, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -1378,17 +1378,19 @@ class MainWindow(QMainWindow):
                 if uploaded_to_webdb:
                     QTimer.singleShot(0, self._check_webdb_catalogue)
 
-    @staticmethod
-    def _open_local_file(path: Path) -> None:
+    def _open_local_file(self, path: Path) -> None:
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(path))
-            elif sys.platform == "darwin":
-                os.system(f'open "{path}"')
+            resolved = path.resolve()
+            if not resolved.is_file():
+                self.append_log(f"PDF was not found: {resolved}")
+                return
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolved)))
+            if opened:
+                self.append_log(f"Opened PDF with the system default viewer: {resolved}")
             else:
-                os.system(f'xdg-open "{path}"')
-        except Exception:
-            pass
+                self.append_log(f"Could not open PDF automatically. Open it manually: {resolved}")
+        except Exception as exc:
+            self.append_log(f"Could not open PDF automatically: {exc}. File: {path}")
 
     def append_log(self, message: str) -> None:
         now = datetime.now().astimezone()
