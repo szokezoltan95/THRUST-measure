@@ -72,8 +72,11 @@ class SCoPE_GUI:
             zone_color = self.colors["zone_ok_fill"] if self.zone_ok else self.colors["zone_idle_fill"]
             zone_outline = self.colors["zone_ok"] if self.zone_ok else self.colors["zone_idle"]
             zone = pygame.Rect(int(zx - zw / 2), int(zy - zw / 2), int(zw), int(zw))
+            previous_clip = self.screen.get_clip()
+            self.screen.set_clip(rect)
             pygame.draw.ellipse(self.screen, zone_color, zone)
             pygame.draw.ellipse(self.screen, zone_outline, zone, max(1, self.zone_width))
+            self.screen.set_clip(previous_clip)
             sx = cx + stick_x * scale
             sy = cy - stick_y * scale
             pygame.draw.circle(self.screen, self.colors["stick_fill"], (int(sx), int(sy)), self.stick_radius)
@@ -89,17 +92,31 @@ class SCoPE_GUI:
     def _draw_gimbal_guides(self, rect: pygame.Rect) -> None:
         color = self.colors["grid"]
         width = max(2, min(8, self.border_width // 2))
-        corner = max(18, min(rect.width // 6, self.border_width * 4))
+        tick = max(18, rect.width // 10)
+        corner = min(rect.width // 4, tick * 2)
         left, right = rect.left, rect.right - 1
         top, bottom = rect.top, rect.bottom - 1
-        for x, y, sx, sy in (
+        for x, y, horizontal_direction, vertical_direction in (
             (left, top, 1, 1), (right, top, -1, 1),
             (left, bottom, 1, -1), (right, bottom, -1, -1),
         ):
-            pygame.draw.line(self.screen, color, (x, y), (x + sx * corner, y), width)
-            pygame.draw.line(self.screen, color, (x, y), (x, y + sy * corner), width)
+            # Filled rectangles share the same square at the joint so their
+            # corners meet cleanly instead of forming a stepped line join.
+            horizontal = pygame.Rect(
+                x if horizontal_direction > 0 else x - corner + 1,
+                y - width // 2,
+                corner,
+                width,
+            )
+            vertical = pygame.Rect(
+                x - width // 2,
+                y if vertical_direction > 0 else y - corner + 1,
+                width,
+                corner,
+            )
+            pygame.draw.rect(self.screen, color, horizontal)
+            pygame.draw.rect(self.screen, color, vertical)
 
-        tick = max(18, rect.width // 10)
         cx, cy = rect.center
         pygame.draw.line(self.screen, color, (cx, top), (cx, top + tick), self.cross_width)
         pygame.draw.line(self.screen, color, (cx, bottom), (cx, bottom - tick), self.cross_width)
