@@ -2,6 +2,7 @@ import random
 import unittest
 
 from scope.action_generation import DEFAULT_ACTION_SETTINGS, generate_next_target
+from scope.scope_config import ScopeConfig
 
 
 class ScopeActionGenerationTests(unittest.TestCase):
@@ -72,6 +73,21 @@ class ScopeActionGenerationTests(unittest.TestCase):
             return result
 
         self.assertEqual(sequence(1234), sequence(1234))
+
+    def test_scope_config_round_trips_action_settings_without_old_difficulty(self):
+        config = ScopeConfig()
+        config.validate()
+        payload = config.to_dict()
+        self.assertNotIn("difficulty", payload)
+        restored = ScopeConfig.from_dict(payload)
+        restored.validate()
+        self.assertEqual(restored.action_settings, config.action_settings)
+
+    def test_config_rejects_grid_points_that_collapse_to_duplicate_joystick_values(self):
+        config = ScopeConfig(stick_max=200)
+        config.action_settings["intervals"]["LX"] = [-0.005, 0.005]
+        with self.assertRaisesRegex(ValueError, "duplicate joystick values"):
+            config.validate()
 
 
 if __name__ == "__main__":
