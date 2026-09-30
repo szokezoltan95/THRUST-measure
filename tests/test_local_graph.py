@@ -39,12 +39,17 @@ def test_save_local_response_graph_writes_comparable_scope_pdf(tmp_path, monkeyp
         return figure, axes
 
     monkeypatch.setattr(plt, "subplots", capture_subplots)
-    graph_path = save_local_response_graph(raw_log, analysis)
+    analysis["started_at"] = "2026-09-30T12:34:56+00:00"
+    graph_path = save_local_response_graph(raw_log, analysis, participant_id="THRUST-001")
 
     assert graph_path == tmp_path / "graphs" / "SCOPE_demo_response.pdf"
     assert graph_path.read_bytes().startswith(b"%PDF-")
+    figure = captured[0][0]
     axes = captured[0][1].flat
     assert [axis.get_title(loc="left") for axis in axes] == ["L · Y", "R · Y", "L · X", "R · X"]
     assert all(tuple(axis.get_ylim()) == FIXED_Y_LIMITS for axis in axes)
     assert all(axis.get_xlabel() == "Time [s]" for axis in axes)
     assert all("Max SD" in axis.texts[-1].get_text() for axis in axes)
+    assert "Participant ID: THRUST-001" in figure.texts[1].get_text()
+    assert "Test date/time: 2026-09-30" in figure.texts[1].get_text()
+    assert all(axis.get_legend()._loc == 4 for axis in axes)
