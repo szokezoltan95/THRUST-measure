@@ -22,6 +22,7 @@ class SCoPE_GUI:
             "background": screen_background, "gimbal": gimbal_background,
             "stick_outline": stick_outline, "stick_fill": stick_fill,
             "zone_idle": zone_idle_outline, "zone_ok": zone_ok_outline,
+            "zone_idle_fill": zone_idle_fill, "zone_ok_fill": zone_ok_fill,
             "grid": grid_color, "label": label_color, "prompt": prompt_color,
         }
         self.stick_radius = stick_radius
@@ -52,7 +53,7 @@ class SCoPE_GUI:
         self.screen.fill(self.colors["background"])
         size = min(height * 0.66, width * 0.38, self.gimbal_size)
         size = max(160, int(size))
-        gap = max(30, int(width * 0.035))
+        gap = max(90, int(width * 0.14))
         y = int(height * 0.47 - size / 2)
         left_x = int(width / 2 - size - gap / 2)
         right_x = int(width / 2 + gap / 2)
@@ -63,23 +64,20 @@ class SCoPE_GUI:
         ):
             rect = pygame.Rect(origin_x, y, size, size)
             pygame.draw.rect(self.screen, self.colors["gimbal"], rect)
-            pygame.draw.rect(self.screen, self.colors["grid"], rect, self.border_width)
-            pygame.draw.line(self.screen, self.colors["grid"], rect.midleft, rect.midright, self.cross_width)
-            pygame.draw.line(self.screen, self.colors["grid"], rect.midtop, rect.midbottom, self.cross_width)
+            self._draw_gimbal_guides(rect)
             cx, cy = rect.center
             zx = cx + target_x * scale
             zy = cy - target_y * scale
             zw = self.stick_zone * scale * 2
-            zone_color = self.colors["zone_ok"] if self.zone_ok else self.colors["zone_idle"]
+            zone_color = self.colors["zone_ok_fill"] if self.zone_ok else self.colors["zone_idle_fill"]
+            zone_outline = self.colors["zone_ok"] if self.zone_ok else self.colors["zone_idle"]
             zone = pygame.Rect(int(zx - zw / 2), int(zy - zw / 2), int(zw), int(zw))
-            pygame.draw.ellipse(self.screen, zone_color, zone, max(1, self.zone_width))
+            pygame.draw.ellipse(self.screen, zone_color, zone)
+            pygame.draw.ellipse(self.screen, zone_outline, zone, max(1, self.zone_width))
             sx = cx + stick_x * scale
             sy = cy - stick_y * scale
             pygame.draw.circle(self.screen, self.colors["stick_fill"], (int(sx), int(sy)), self.stick_radius)
             pygame.draw.circle(self.screen, self.colors["stick_outline"], (int(sx), int(sy)), self.stick_radius, self.stick_width)
-        label_y = min(height - 105, y + size + 24)
-        for x, label in ((left_x, "Aileron / Elevator"), (right_x, "Throttle / Rudder")):
-            self.screen.blit(self._small_font.render(label, True, self.colors["label"]), (x, label_y))
         self.screen.blit(self._font.render(self.action_text, True, self.colors["label"]), (24, 20))
         self.screen.blit(self._font.render(self.counter_text, True, self.colors["label"]), (24, height - 62))
         if self.prompt_visible and self.prompt_text:
@@ -87,6 +85,26 @@ class SCoPE_GUI:
             text = font.render(self.prompt_text, True, self.colors["prompt"])
             self.screen.blit(text, text.get_rect(center=(width / 2, height / 2)))
         pygame.display.flip()
+
+    def _draw_gimbal_guides(self, rect: pygame.Rect) -> None:
+        color = self.colors["grid"]
+        width = max(2, min(8, self.border_width // 2))
+        corner = max(18, min(rect.width // 6, self.border_width * 4))
+        left, right = rect.left, rect.right - 1
+        top, bottom = rect.top, rect.bottom - 1
+        for x, y, sx, sy in (
+            (left, top, 1, 1), (right, top, -1, 1),
+            (left, bottom, 1, -1), (right, bottom, -1, -1),
+        ):
+            pygame.draw.line(self.screen, color, (x, y), (x + sx * corner, y), width)
+            pygame.draw.line(self.screen, color, (x, y), (x, y + sy * corner), width)
+
+        tick = max(18, rect.width // 10)
+        cx, cy = rect.center
+        pygame.draw.line(self.screen, color, (cx, top), (cx, top + tick), self.cross_width)
+        pygame.draw.line(self.screen, color, (cx, bottom), (cx, bottom - tick), self.cross_width)
+        pygame.draw.line(self.screen, color, (left, cy), (left + tick, cy), self.cross_width)
+        pygame.draw.line(self.screen, color, (right, cy), (right - tick, cy), self.cross_width)
 
     def pump(self) -> bool:
         for event in pygame.event.get():
