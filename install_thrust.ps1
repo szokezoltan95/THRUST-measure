@@ -70,7 +70,13 @@ try {
     $shortcut.TargetPath = $guiLauncher
     $shortcut.Arguments = ''
     $shortcut.WorkingDirectory = $RepoRoot
-    $shortcut.IconLocation = "$guiLauncher,0"
+    $iconPath = Join-Path $RepoRoot 'THRUST.ico'
+    if (Test-Path -LiteralPath $iconPath) {
+        $shortcut.IconLocation = "$iconPath,0"
+    } else {
+        $shortcut.IconLocation = "$guiLauncher,0"
+        Write-Step 'THRUST.ico was not found; using the default application icon.'
+    }
     $shortcut.Description = 'Start THRUST-measure'
     $shortcut.Save()
 
