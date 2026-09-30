@@ -141,6 +141,10 @@ class MainWindow(QMainWindow):
         self._catalogue_connection_ok = False
         self._reconnect_in_flight = False
         self._measurement_active = False
+        self._presence_stop_event: threading.Event | None = None
+        self._presence_thread: threading.Thread | None = None
+        self._presence_participant_id: str | None = None
+        self._presence_test_definition_id: str | None = None
         self.log_history: list[str] = []
         self.log_dialog: QDialog | None = None
         self.log_view: QPlainTextEdit | None = None
@@ -826,10 +830,56 @@ class MainWindow(QMainWindow):
                 self.advanced_dialog.set_offline_visible(False)
             self.append_log(f"Loaded {len(tests)} active tests for {role or 'user'}.")
             self._load_selected_test()
+            self._start_presence_reporting()
 
         except (WebDbError, KeyError, ValueError) as exc:
             self.append_log(f"WebDB connection failed: {exc}")
             self._activate_offline_mode(show_dialog=show_dialog, error=str(exc))
+
+    def _start_presence_reporting(self) -> None:
+        self._stop_presence_reporting()
+        client = self.client
+        if client is None or self.offline_mode:
+            return
+        stop_event = threading.Event()
+        self._presence_stop_event = stop_event
+
+        def report() -> None:
+            try:
+                while not stop_event.is_set():
+                    measuring = self._measurement_active
+                    try:
+                        client.report_presence(
+                            "measuring" if measuring else "idle",
+                            participant_id=self._presence_participant_id if measuring else None,
+                            test_definition_id=self._presence_test_definition_id if measuring else None,
+                        )
+                    except WebDbError:
+                        pass
+                    if stop_event.wait(10):
+                        break
+            finally:
+                try:
+                    client.report_presence("disconnected")
+                except WebDbError:
+                    pass
+
+        self._presence_thread = threading.Thread(
+            target=report,
+            daemon=True,
+            name="webdb-client-presence",
+        )
+        self._presence_thread.start()
+
+    def _stop_presence_reporting(self) -> None:
+        stop_event = self._presence_stop_event
+        self._presence_stop_event = None
+        thread = self._presence_thread
+        self._presence_thread = None
+        if stop_event is not None:
+            stop_event.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=1)
 
     def _disconnect_webdb(self) -> None:
         self._auto_reconnect = False
@@ -921,6 +971,7 @@ class MainWindow(QMainWindow):
             self.advanced_dialog.set_offline_visible(False)
         self.append_log("WebDB reconnected; participants and tests refreshed.")
         self._update_run_availability()
+        self._start_presence_reporting()
 
     def _apply_catalogue_check(self, generation: int, client: WebDbClient, result: object, error: object) -> None:
         if generation != self._catalogue_generation or client is not self.client or self.offline_mode:
@@ -980,6 +1031,7 @@ class MainWindow(QMainWindow):
         }
 
     def _activate_offline_mode(self, show_dialog: bool, error: str = "") -> None:
+        self._stop_presence_reporting()
         self._catalogue_generation += 1
         self._catalogue_check_in_flight = False
         self._reconnect_in_flight = False
@@ -1183,6 +1235,10 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Joystick unavailable", message)
                 return
 
+            selected_participant_id = self.participant_combo.currentData()
+            self._presence_participant_id = str(selected_participant_id) if selected_participant_id else None
+            selected_test_id = test.get("id")
+            self._presence_test_definition_id = str(selected_test_id) if selected_test_id else None
             self._measurement_active = True
             self.catalogue_timer.stop()
             runtime = self.common_page.export_common_dict()
@@ -1293,6 +1349,8 @@ class MainWindow(QMainWindow):
         finally:
             if self._measurement_active:
                 self._measurement_active = False
+                self._presence_participant_id = None
+                self._presence_test_definition_id = None
                 # Ignore a catalogue result started just before the session.
                 self._catalogue_generation += 1
                 self._catalogue_check_in_flight = False
