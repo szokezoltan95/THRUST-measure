@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +80,24 @@ def _metric_text(channel: dict[str, Any], time_s: list[float],
         f"RMSE: {fmt(rmse)}",
         f"Settling: {fmt(settling, ' s')}",
     ))
-def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]) -> Path:
+def _format_test_time(value: Any) -> str:
+    if not value:
+        return "—"
+    try:
+        timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.astimezone()
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def save_local_response_graph(
+    raw_log_path: str | Path,
+    analysis: dict[str, Any],
+    *,
+    participant_id: str | None = None,
+) -> Path:
     """Save averaged and median response curves as a local PDF."""
     import matplotlib
     matplotlib.use("Agg")
@@ -156,14 +174,20 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
                           linewidth=2.2, label="Median")
             data_end = max(time_s) if time_s else 0.0
             axis.set_xlim(0, max(data_end, horizon if horizon > 0 else 0.1))
-            axis.legend(loc="upper right", frameon=False, ncol=3, fontsize=8)
             metric_text = _metric_text(channel, time_s, mean, std)
             axis.text(
-                0.98, 0.035, metric_text, transform=axis.transAxes,
-                ha="right", va="bottom", fontsize=6.8, linespacing=1.12,
+                0.98, 0.22, metric_text, transform=axis.transAxes,
+                ha="right", va="bottom", fontsize=6.2, linespacing=1.05,
                 family="monospace",
                 bbox={"boxstyle": "round,pad=0.45", "facecolor": "white",
-                      "edgecolor": "#d9e0e8", "alpha": 0.92},
+                      "edgecolor": "#d9e0e8", "alpha": 0.94},
+            )
+            # Keep series labels below the per-axis metrics card, away from the SD band.
+            axis.legend(
+                loc="lower right", frameon=True, framealpha=0.92,
+                facecolor="white", edgecolor="#d9e0e8", ncol=1,
+                fontsize=6.2, labelspacing=0.12, handlelength=1.5,
+                borderaxespad=0.25,
             )
 
         axis.set_ylim(*FIXED_Y_LIMITS)
@@ -180,12 +204,18 @@ def save_local_response_graph(raw_log_path: str | Path, analysis: dict[str, Any]
     kind = "SCoPE" if is_scope else "SimPLE"
     figure.suptitle(f"{kind} · normalized step response", fontsize=17,
                     fontweight="bold", color="#202b38", y=0.985)
+    participant_label = (participant_id or "").strip() or "—"
     figure.text(
         0.5, 0.955,
-        "Onset: sustained deviation above max(2% of input step, 3× baseline MAD)",
-        ha="center", va="top", fontsize=8, color="#667085",
+        f"Participant ID: {participant_label} · Test date/time: {_format_test_time(analysis.get('started_at'))}",
+        ha="center", va="top", fontsize=8.5, color="#465468",
     )
-    figure.tight_layout(rect=(0, 0, 1, 0.925))
+    figure.text(
+        0.5, 0.934,
+        "Onset: sustained deviation above max(2% of input step, 3× baseline MAD)",
+        ha="center", va="top", fontsize=7.5, color="#667085",
+    )
+    figure.tight_layout(rect=(0, 0, 1, 0.905))
 
     raw_path = Path(raw_log_path)
     base = raw_path.name
