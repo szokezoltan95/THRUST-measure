@@ -50,6 +50,7 @@ from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
+from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 
 
@@ -379,6 +380,11 @@ class MainWindow(QMainWindow):
         self.logs_button.setObjectName("logsButton")
         self.logs_button.clicked.connect(self._open_logs)
         title_row.addWidget(self.logs_button)
+        self.legacy_import_button = QPushButton("Legacy files")
+        self.legacy_import_button.setObjectName("legacyImportButton")
+        self.legacy_import_button.setToolTip("Convert and optionally upload old measurement logs")
+        self.legacy_import_button.clicked.connect(self._open_legacy_import)
+        title_row.addWidget(self.legacy_import_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -1339,6 +1345,11 @@ class MainWindow(QMainWindow):
         self.log_dialog.show()
         self.log_dialog.raise_()
         self.log_dialog.activateWindow()
+
+    def _open_legacy_import(self) -> None:
+        dialog = LegacyImportDialog(self.server_edit.text().strip(), self.username_edit.text(), self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
 
     def _update_selection_mode_controls(self) -> None:
         offline = self.offline_mode
