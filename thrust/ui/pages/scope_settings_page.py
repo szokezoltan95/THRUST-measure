@@ -28,9 +28,6 @@ class ScopeSettingsPage(QWidget):
         self.load_scope_config(ScopeConfig())
 
     def _build_variables(self) -> None:
-        self.difficulty_edit = QLineEdit("hard")
-        self.difficulty_edit.setMaximumWidth(140)
-
         self.timeout_spin = QDoubleSpinBox()
         self.timeout_spin.setRange(0.1, 60.0)
         self.timeout_spin.setDecimals(2)
@@ -65,6 +62,31 @@ class ScopeSettingsPage(QWidget):
 
         self.seed_edit = QLineEdit("")
         self.seed_edit.setMaximumWidth(140)
+
+        self.points_per_axis_spin = QSpinBox()
+        self.points_per_axis_spin.setRange(2, 101)
+        self.points_per_axis_spin.setValue(9)
+        self.min_changed_axes_spin = QSpinBox()
+        self.min_changed_axes_spin.setRange(1, 4)
+        self.min_changed_axes_spin.setValue(1)
+        self.max_changed_axes_spin = QSpinBox()
+        self.max_changed_axes_spin.setRange(1, 4)
+        self.max_changed_axes_spin.setValue(2)
+        self.single_gimbal_probability_spin = QDoubleSpinBox()
+        self.single_gimbal_probability_spin.setRange(0, 100)
+        self.single_gimbal_probability_spin.setSuffix(" %")
+        self.single_gimbal_probability_spin.setValue(50)
+        self.interval_spins: dict[str, tuple[QDoubleSpinBox, QDoubleSpinBox]] = {}
+        for axis in ("LX", "LY", "RY", "RX"):
+            low, high = QDoubleSpinBox(), QDoubleSpinBox()
+            for spin in (low, high):
+                spin.setRange(-1, 1)
+                spin.setDecimals(2)
+                spin.setSingleStep(0.05)
+                spin.setMaximumWidth(110)
+            low.setValue(-0.8)
+            high.setValue(0.8)
+            self.interval_spins[axis] = (low, high)
 
         for name, value in {
             "gui_gimbal_size": (150, 2000, 500),
@@ -102,11 +124,10 @@ class ScopeSettingsPage(QWidget):
         self.tabs = QTabWidget()
         root.addWidget(self.tabs)
 
-        experiment = QWidget()
-        experiment_layout = QGridLayout(experiment)
+        basic = QWidget()
+        basic_layout = QGridLayout(basic)
         task_group = QGroupBox("Test parameters")
         task_form = QFormLayout(task_group)
-        task_form.addRow("Difficulty:", self.difficulty_edit)
         task_form.addRow("Sampling frequency [Hz]:", self.fps_spin)
         task_form.addRow("Action timeout [s]:", self.timeout_spin)
         task_form.addRow("Hold time [s]:", self.hold_time_spin)
@@ -114,12 +135,7 @@ class ScopeSettingsPage(QWidget):
         task_form.addRow("Completed actions:", self.max_actions_spin)
         task_form.addRow("Countdown [s]:", self.countdown_spin)
         task_form.addRow("Random seed:", self.seed_edit)
-        experiment_layout.addWidget(task_group, 0, 0)
-        experiment_layout.addWidget(QLabel("Joystick hardware, axis mapping and output paths are local runtime settings."), 1, 0)
-        experiment_layout.setRowStretch(2, 1)
-
-        appearance = QWidget()
-        appearance_layout = QGridLayout(appearance)
+        basic_layout.addWidget(task_group, 0, 0)
         geometry_group = QGroupBox("Geometry")
         geometry_form = QFormLayout(geometry_group)
         geometry_form.addRow("Gimbal size [px]:", self.gui_gimbal_size_spin)
@@ -130,6 +146,33 @@ class ScopeSettingsPage(QWidget):
         geometry_form.addRow("Gimbal border width:", self.gui_gimbal_border_width_spin)
         geometry_form.addRow("Cross width:", self.gui_gimbal_cross_width_spin)
 
+        basic_layout.addWidget(geometry_group, 0, 1)
+        basic_layout.addWidget(QLabel("Joystick hardware, axis mapping and output paths are local runtime settings."), 1, 0, 1, 2)
+        basic_layout.setRowStretch(2, 1)
+
+        actions = QWidget()
+        actions_layout = QGridLayout(actions)
+        action_group = QGroupBox("Random target generation")
+        action_form = QFormLayout(action_group)
+        action_form.addRow("Possible points per axis:", self.points_per_axis_spin)
+        interval_grid = QGridLayout()
+        interval_grid.addWidget(QLabel("Axis"), 0, 0)
+        interval_grid.addWidget(QLabel("Minimum"), 0, 1)
+        interval_grid.addWidget(QLabel("Maximum"), 0, 2)
+        for row, (axis, (low, high)) in enumerate(self.interval_spins.items(), start=1):
+            interval_grid.addWidget(QLabel(axis), row, 0)
+            interval_grid.addWidget(low, row, 1)
+            interval_grid.addWidget(high, row, 2)
+        action_form.addRow("Normalized intervals:", interval_grid)
+        action_form.addRow("Minimum changed axes:", self.min_changed_axes_spin)
+        action_form.addRow("Maximum changed axes:", self.max_changed_axes_spin)
+        action_form.addRow("Only one gimbal changes:", self.single_gimbal_probability_spin)
+        actions_layout.addWidget(action_group, 0, 0)
+        actions_layout.addWidget(QLabel("A changed axis means its target differs from the previous target. Zero is a regular target value; no automatic return to centre is inserted."), 1, 0)
+        actions_layout.setRowStretch(2, 1)
+
+        colors = QWidget()
+        colors_layout = QGridLayout(colors)
         color_group = QGroupBox("Colors")
         color_grid = QGridLayout(color_group)
         labels = [
@@ -152,12 +195,12 @@ class ScopeSettingsPage(QWidget):
             color_grid.addWidget(QLabel(label), row, 0)
             color_grid.addWidget(button, row, 1)
 
-        appearance_layout.addWidget(geometry_group, 0, 0)
-        appearance_layout.addWidget(color_group, 0, 1)
-        appearance_layout.setColumnStretch(1, 1)
+        colors_layout.addWidget(color_group, 0, 0)
+        colors_layout.setColumnStretch(0, 1)
 
-        self.tabs.addTab(experiment, "Test configuration")
-        self.tabs.addTab(appearance, "Appearance")
+        self.tabs.addTab(basic, "Basic settings")
+        self.tabs.addTab(actions, "Actions")
+        self.tabs.addTab(colors, "Colors")
 
     def _pick_color(self, key: str) -> None:
         color = QColorDialog.getColor(options=QColorDialog.ColorDialogOption.DontUseNativeDialog)
@@ -183,7 +226,6 @@ class ScopeSettingsPage(QWidget):
         common_data = common.export_common_dict()
         return ScopeConfig(
             user=common_data["user"],
-            difficulty=self.difficulty_edit.text().strip().lower() or "hard",
             action_timeout_s=self.timeout_spin.value(),
             hold_time_s=self.hold_time_spin.value(),
             fps=self.fps_spin.value(),
@@ -192,6 +234,16 @@ class ScopeSettingsPage(QWidget):
             max_completed_actions=self.max_actions_spin.value(),
             countdown_s=self.countdown_spin.value(),
             seed=int(seed_text) if seed_text else None,
+            action_settings={
+                "intervals": {
+                    axis: [bounds[0].value(), bounds[1].value()]
+                    for axis, bounds in self.interval_spins.items()
+                },
+                "points_per_axis": self.points_per_axis_spin.value(),
+                "min_changed_axes": self.min_changed_axes_spin.value(),
+                "max_changed_axes": self.max_changed_axes_spin.value(),
+                "single_gimbal_probability": self.single_gimbal_probability_spin.value() / 100,
+            },
             fullscreen=common_data["fullscreen"],
             topmost=common_data["topmost"],
             debug_output=common_data["debug_output"],
@@ -223,7 +275,6 @@ class ScopeSettingsPage(QWidget):
         )
 
     def load_scope_config(self, cfg: ScopeConfig) -> None:
-        self.difficulty_edit.setText(cfg.difficulty)
         self.timeout_spin.setValue(cfg.action_timeout_s)
         self.fps_spin.setValue(cfg.fps)
         self.hold_time_spin.setValue(cfg.hold_time_s)
@@ -231,6 +282,15 @@ class ScopeSettingsPage(QWidget):
         self.max_actions_spin.setValue(cfg.max_completed_actions)
         self.countdown_spin.setValue(cfg.countdown_s)
         self.seed_edit.setText("" if cfg.seed is None else str(cfg.seed))
+        action_settings = cfg.action_settings
+        for axis, bounds in self.interval_spins.items():
+            low, high = action_settings["intervals"][axis]
+            bounds[0].setValue(low)
+            bounds[1].setValue(high)
+        self.points_per_axis_spin.setValue(action_settings["points_per_axis"])
+        self.min_changed_axes_spin.setValue(action_settings["min_changed_axes"])
+        self.max_changed_axes_spin.setValue(action_settings["max_changed_axes"])
+        self.single_gimbal_probability_spin.setValue(action_settings["single_gimbal_probability"] * 100)
         self.gui_gimbal_size_spin.setValue(cfg.gui_gimbal_size)
         self.gui_stick_zone_spin.setValue(cfg.gui_stick_zone)
         self.gui_stick_radius_spin.setValue(cfg.gui_stick_radius)
