@@ -5,12 +5,23 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from scope.action_generation import DEFAULT_ACTION_SETTINGS, validate_action_settings
+
+
+def _default_action_settings() -> dict[str, Any]:
+    return {
+        **DEFAULT_ACTION_SETTINGS,
+        "intervals": {axis: list(bounds) for axis, bounds in DEFAULT_ACTION_SETTINGS["intervals"].items()},
+    }
+
 
 @dataclass
 class ScopeConfig:
     # experiment
     debug_output: bool = False
     user: str = "Pilot"
+    # Accepted when reading older local configuration files; new tests use
+    # action_settings instead of named difficulty branches.
     difficulty: str = "hard"
     action_timeout_s: float = 3.0
     hold_time_s: float = 0.5
@@ -20,6 +31,7 @@ class ScopeConfig:
     max_completed_actions: int = 50
     countdown_s: int = 3
     seed: int | None = None
+    action_settings: dict[str, Any] = field(default_factory=_default_action_settings)
 
     # runtime
     fullscreen: bool = True
@@ -69,11 +81,7 @@ class ScopeConfig:
     prompt_color: str = "#ff0000"
 
     def validate(self) -> None:
-        if isinstance(self.difficulty, str):
-            self.difficulty = self.difficulty.lower()
-        allowed = {"easy", "medium", "hard", "ultra"}
-        if self.difficulty not in allowed:
-            raise ValueError(f"difficulty must be one of {sorted(allowed)}")
+        validate_action_settings(self.action_settings)
         if not self.user.strip():
             raise ValueError("User / pilot name cannot be empty")
         if self.fps < 10:
@@ -113,13 +121,20 @@ class ScopeConfig:
             raise ValueError("gui_gimbal_cross_width must be positive")
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data.pop("difficulty", None)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ScopeConfig":
         normalized = dict(data)
-        if isinstance(normalized.get("difficulty"), str):
-            normalized["difficulty"] = normalized["difficulty"].lower()
+        incoming_actions = normalized.get("action_settings")
+        merged_actions = _default_action_settings()
+        if isinstance(incoming_actions, dict):
+            merged_actions.update(incoming_actions)
+            if isinstance(incoming_actions.get("intervals"), dict):
+                merged_actions["intervals"].update(incoming_actions["intervals"])
+        normalized["action_settings"] = merged_actions
         axis_map = normalized.get("axis_map")
         if isinstance(axis_map, dict):
             legacy = {"AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX"}
