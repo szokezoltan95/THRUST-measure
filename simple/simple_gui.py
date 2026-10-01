@@ -16,7 +16,7 @@ class SimpleGUI:
         self.config = config
         self.running = True
         self.target = (0.0, 0.0)
-        self.position = (0.0, 0.0)
+        self.position = (0.0, config.copter_radius_m)
         self.angle = 0.0
         self.prompt = ""
         self.status = ""
@@ -38,7 +38,7 @@ class SimpleGUI:
 
     def _origin(self) -> tuple[float, float, float]:
         width, height = self.screen.get_size()
-        ground_y = height - max(110, height * 0.14)
+        ground_y = height - max(80, height * 0.12)
         scale = min((width - 80) / self.config.world_width_m,
                     (ground_y - 40) / self.config.world_height_m)
         return width / 2, ground_y, scale
@@ -49,36 +49,50 @@ class SimpleGUI:
 
     def _redraw(self) -> None:
         width, height = self.screen.get_size()
+        self.screen.fill("#000000")
+        ox, ground_y, scale = self._origin()
+        left = round(ox - self.config.world_width_m * scale / 2)
+        right = round(ox + self.config.world_width_m * scale / 2)
+        top = round(ground_y - self.config.world_height_m * scale)
+        field = pygame.Rect(left, top, right - left, round(ground_y) - top)
         if self.background is not None:
-            self.screen.blit(pygame.transform.smoothscale(self.background, (width, height)), (0, 0))
+            picture = pygame.transform.smoothscale(self.background, (field.width, field.height))
+            self.screen.blit(picture, field.topleft)
+            veil = pygame.Surface(field.size, pygame.SRCALPHA)
+            veil.fill((30, 30, 30, 110))
+            self.screen.blit(veil, field.topleft)
         else:
-            self.screen.fill("#8eb8ca")
-            horizon = int(height * 0.82)
-            pygame.draw.rect(self.screen, "#536c54", (0, horizon, width, height - horizon))
-            pygame.draw.line(self.screen, "#e5eee0", (0, horizon), (width, horizon), 2)
+            pygame.draw.rect(self.screen, "#808080", field)
+        # The physical collision planes coincide with the inner edges of these lines.
+        pygame.draw.lines(self.screen, "#ffffff", False,
+                          [(left, round(ground_y)), (left, top), (right, top), (right, round(ground_y))], 4)
+        pygame.draw.line(self.screen, "#ffffff", (left, round(ground_y)), (right, round(ground_y)), 5)
+        for x in range(left + 12, right, 22):
+            pygame.draw.line(self.screen, "#7e7e7e", (x, round(ground_y) + 5),
+                             (min(x + 10, right), round(ground_y) + 15), 2)
+
         target_xy = self._screen(*self.target)
-        _, _, scale = self._origin()
-        radius = max(4, round(self.config.completion_radius_m * scale))
+        radius = max(1, round(self.config.completion_radius_m * scale))
         target_color = self.config.zone_ok_outline if self.zone == "green" else self.config.zone_idle_outline
         fill_color = self.config.zone_ok_fill if self.zone == "green" else self.config.zone_idle_fill
         pygame.draw.circle(self.screen, fill_color, target_xy, radius)
-        pygame.draw.circle(self.screen, target_color, target_xy, radius, 4)
+        pygame.draw.circle(self.screen, target_color, target_xy, radius, 2)
         x, y = self._screen(*self.position)
-        copter_radius = max(10, min(28, round(scale * 0.07)))
+        copter_radius = max(1, round(scale * self.config.copter_radius_m))
         pygame.draw.circle(self.screen, "#1e2cff", (x, y), copter_radius)
         pygame.draw.circle(self.screen, "#ffffff", (x, y), copter_radius, 2)
-        end = (round(x + copter_radius * 2.2 * math.sin(self.angle)),
-               round(y - copter_radius * 2.2 * math.cos(self.angle)))
-        pygame.draw.line(self.screen, "#ffffff", (x, y), end, 4)
+        end = (round(x + copter_radius * 1.8 * math.sin(self.angle)),
+               round(y - copter_radius * 1.8 * math.cos(self.angle)))
+        pygame.draw.line(self.screen, "#ffffff", (x, y), end, 3)
         bar = pygame.Surface((width, 46), pygame.SRCALPHA)
-        bar.fill((16, 24, 32, 190))
+        bar.fill((0, 0, 0, 220))
         self.screen.blit(bar, (0, height - 46))
-        self.screen.blit(self.small_font.render(self.status, True, "#eaf2f8"), (22, height - 35))
+        self.screen.blit(self.small_font.render(self.status, True, "#ffffff"), (22, height - 35))
         if self.prompt:
             font = self.large_font if self.prompt.isdecimal() else self.font
-            text = font.render(self.prompt, True, "#ff6b72")
-            y_prompt = height / 2 if self.prompt.isdecimal() else 58
-            self.screen.blit(text, text.get_rect(center=(width / 2, y_prompt)))
+            rendered = font.render(self.prompt, True, "#ff4c4c")
+            y_prompt = height / 2 if self.prompt.isdecimal() else max(24, top - 18)
+            self.screen.blit(rendered, rendered.get_rect(center=(width / 2, y_prompt)))
         pygame.display.flip()
 
     def update_target(self, target: tuple[float, float]) -> None:
@@ -90,8 +104,8 @@ class SimpleGUI:
     def zone_color(self, state: str) -> None:
         self.zone = state
 
-    def update_status(self, completed: int, timed_out: int, resets: int, elapsed_s: float) -> None:
-        self.status = f"COMPLETED  {completed:03d}     TIMEOUTS  {timed_out:03d}     RESETS  {resets:02d}     ELAPSED  {elapsed_s:0.1f} s"
+    def update_status(self, completed: int, timed_out: int, resets: int, elapsed_s: float, crashes: int = 0) -> None:
+        self.status = f"COMPLETED  {completed:03d}     TIMEOUTS  {timed_out:03d}     RESETS  {resets:02d}     CRASHES  {crashes:02d}     ELAPSED  {elapsed_s:0.1f} s"
 
     def set_prompt(self, text: str) -> None:
         self.prompt = text
