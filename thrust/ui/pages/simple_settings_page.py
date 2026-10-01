@@ -42,21 +42,29 @@ class SimpleSettingsPage(QWidget):
         self.countdown_s = self._spin(0, 60, 3)
         self.completion_radius = self._spin(.01, 2, .1, 2, .01)
         self.x_limit = self._spin(.1, 20, 1.5, 2, .1)
+        self.y_min = self._spin(.01, 20, .25, 2, .01)
         self.y_limit = self._spin(.1, 20, 2, 2, .1)
         self.resolution = QComboBox()
         for label, width, height in RESOLUTIONS:
             self.resolution.addItem(label, (width, height))
         self.world_width = self._spin(.5, 50, 4.5, 2, .1)
         self.world_height = QLabel("2.53 m")
+        self.pattern = QComboBox()
+        for label, key in (("Random targets", "random"), ("Slalom", "slalom"), ("Circuit", "circuit")):
+            self.pattern.addItem(label, key)
+        self.route_points = self._spin(4, 20, 6)
+        self.copter_radius = self._spin(.01, 2, .08, 2, .01)
         self.resolution.currentIndexChanged.connect(self._update_derived_height)
         self.world_width.valueChanged.connect(self._update_derived_height)
+        self.completion_radius.valueChanged.connect(self._update_derived_height)
+        self.copter_radius.valueChanged.connect(self._update_derived_height)
         self.mass = self._spin(.1, 10, .8, 2, .1)
         self.max_thrust = self._spin(1, 100, 16, 2, .5)
         self.drag = self._spin(0, 5, .3, 3, .05)
-        self.zone_idle_fill = self._color_button("#ff3948")
-        self.zone_idle_outline = self._color_button("#ff3948")
-        self.zone_ok_fill = self._color_button("#00cc66")
-        self.zone_ok_outline = self._color_button("#00ff80")
+        self.zone_idle_fill = self._color_button("#ff0000")
+        self.zone_idle_outline = self._color_button("#ff0000")
+        self.zone_ok_fill = self._color_button("#00cc00")
+        self.zone_ok_outline = self._color_button("#00cc00")
 
     def _color_button(self, color: str) -> QPushButton:
         button = QPushButton(color)
@@ -88,7 +96,13 @@ class SimpleSettingsPage(QWidget):
     def _update_derived_height(self, *_args) -> None:
         size = self.resolution.currentData()
         if size:
-            self.world_height.setText(f"{self.world_width.value() * size[1] / size[0]:.2f} m")
+            height = self.world_width.value() * size[1] / size[0]
+            margin = max(self.completion_radius.value(), self.copter_radius.value())
+            self.world_height.setText(f"{height:.2f} m · safe ceiling {max(0, height-margin):.2f} m")
+            self.x_limit.setMaximum(max(.01, self.world_width.value() / 2 - margin))
+            self.y_limit.setMaximum(max(.01, height - margin))
+            self.y_min.setRange(margin, max(margin, height - margin))
+            self.y_limit.setMinimum(self.y_min.value())
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -103,6 +117,8 @@ class SimpleSettingsPage(QWidget):
         task_form.addRow("Hold in target [s]:", self.hold_s)
         task_form.addRow("Countdown [s]:", self.countdown_s)
         task_form.addRow("Target acceptance radius [m]:", self.completion_radius)
+        task_form.addRow("Trajectory:", self.pattern)
+        task_form.addRow("Waypoints per route:", self.route_points)
         task_form.addRow(QLabel("Target zone radius uses the same meter scale as the flight simulation."))
         task_layout.addWidget(task_group)
         task_layout.addStretch()
@@ -115,7 +131,9 @@ class SimpleSettingsPage(QWidget):
         world_form.addRow("World width [m]:", self.world_width)
         world_form.addRow("Derived world height:", self.world_height)
         world_form.addRow("Horizontal target limit [m]:", self.x_limit)
+        world_form.addRow("Minimum target height [m]:", self.y_min)
         world_form.addRow("Maximum target height [m]:", self.y_limit)
+        world_form.addRow("Copter collision radius [m]:", self.copter_radius)
         world_form.addRow("Copter mass [kg]:", self.mass)
         world_form.addRow("Maximum thrust [N]:", self.max_thrust)
         world_form.addRow("Quadratic drag coefficient:", self.drag)
@@ -132,9 +150,13 @@ class SimpleSettingsPage(QWidget):
         self.hold_s.setValue(config.hold_time_s)
         self.countdown_s.setValue(config.countdown_s)
         self.completion_radius.setValue(config.completion_radius_m)
-        self.x_limit.setValue(config.target_x_limit_m)
-        self.y_limit.setValue(config.target_y_max_m)
         self.world_width.setValue(config.world_width_m)
+        self.x_limit.setValue(config.target_x_limit_m)
+        self.y_min.setValue(config.target_y_min_m)
+        self.pattern.setCurrentIndex(max(0, self.pattern.findData(config.target_pattern)))
+        self.route_points.setValue(config.route_points)
+        self.copter_radius.setValue(config.copter_radius_m)
+        self.y_limit.setValue(config.target_y_max_m)
         selected = None
         for index in range(self.resolution.count()):
             if self.resolution.itemData(index) == (config.field_width_px, config.field_height_px):
@@ -159,7 +181,8 @@ class SimpleSettingsPage(QWidget):
         config = SimpleConfig(
             action_timeout_s=self.timeout_s.value(), hold_time_s=self.hold_s.value(),
             countdown_s=self.countdown_s.value(), completion_radius_m=self.completion_radius.value(),
-            target_x_limit_m=self.x_limit.value(), target_y_max_m=self.y_limit.value(),
+            target_x_limit_m=self.x_limit.value(), target_y_min_m=self.y_min.value(), target_y_max_m=self.y_limit.value(),
+            target_pattern=self.pattern.currentData(), route_points=self.route_points.value(), copter_radius_m=self.copter_radius.value(),
             field_width_px=width, field_height_px=height, world_width_m=self.world_width.value(),
             mass_kg=self.mass.value(), max_thrust_n=self.max_thrust.value(), drag_coefficient=self.drag.value(),
             zone_idle_fill=str(self.zone_idle_fill.property("hex_color")),
