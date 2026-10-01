@@ -25,9 +25,9 @@ class SimpleGUI:
         pygame.font.init()
         self.screen = pygame.display.set_mode((0, 0) if fullscreen else (1280, 720), pygame.FULLSCREEN if fullscreen else 0)
         pygame.display.set_caption("SimPLE")
-        self.font = pygame.font.SysFont("Segoe UI", 22)
         self.small_font = pygame.font.SysFont("Segoe UI", 17)
         self.large_font = pygame.font.SysFont("Segoe UI", 72, bold=True)
+        self.message_font = pygame.font.SysFont("Segoe UI", 48, bold=True)
         self.background = None
         if background_path:
             try:
@@ -38,9 +38,11 @@ class SimpleGUI:
 
     def _origin(self) -> tuple[float, float, float]:
         width, height = self.screen.get_size()
-        ground_y = height - max(80, height * 0.12)
-        scale = min((width - 80) / self.config.world_width_m,
-                    (ground_y - 40) / self.config.world_height_m)
+        # Keep the collision walls close to the screen edges while reserving
+        # the bottom strip for status text and a small gap above it.
+        ground_y = height - 50
+        scale = min((width - 16) / self.config.world_width_m,
+                    (ground_y - 8) / self.config.world_height_m)
         return width / 2, ground_y, scale
 
     def _screen(self, x_m: float, y_m: float) -> tuple[int, int]:
@@ -89,10 +91,15 @@ class SimpleGUI:
         self.screen.blit(bar, (0, height - 46))
         self.screen.blit(self.small_font.render(self.status, True, "#ffffff"), (22, height - 35))
         if self.prompt:
-            font = self.large_font if self.prompt.isdecimal() else self.font
+            font = self.large_font if self.prompt.isdecimal() else self.message_font
             rendered = font.render(self.prompt, True, "#ff4c4c")
-            y_prompt = height / 2 if self.prompt.isdecimal() else max(24, top - 18)
-            self.screen.blit(rendered, rendered.get_rect(center=(width / 2, y_prompt)))
+            max_width = max(1, width - 32)
+            if rendered.get_width() > max_width:
+                ratio = max_width / rendered.get_width()
+                rendered = pygame.transform.smoothscale(
+                    rendered, (max_width, max(1, round(rendered.get_height() * ratio))),
+                )
+            self.screen.blit(rendered, rendered.get_rect(center=(width / 2, (top + ground_y) / 2)))
         pygame.display.flip()
 
     def update_target(self, target: tuple[float, float]) -> None:
