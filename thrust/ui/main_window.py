@@ -52,6 +52,7 @@ from thrust.runners.simple_runner import run_simple
 from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
+from thrust.ui.axis_assignment_dialog import AxisAssignmentDialog
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 
@@ -307,33 +308,11 @@ class MainWindow(QMainWindow):
             self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
         joystick_layout.addLayout(feedback_grid)
 
-        self.axis_selector_buttons: dict[str, QPushButton] = {}
-        self.axis_selector_rows: dict[str, QWidget] = {}
-        mapping_group = QGroupBox("Axis assignment")
-        mapping_grid = QGridLayout(mapping_group)
-        mapping_grid.setContentsMargins(8, 8, 8, 8)
-        mapping_grid.setHorizontalSpacing(14)
-        mapping_grid.setVerticalSpacing(6)
-        mapping_group.setMinimumHeight(148)
-        for index, name in enumerate(("LX", "LY", "RY", "RX", "BREAK", "RESET")):
-            row, column = divmod(index, 2)
-            mapping_cell = QWidget()
-            cell_layout = QHBoxLayout(mapping_cell)
-            cell_layout.setContentsMargins(0, 0, 0, 0)
-            cell_layout.setSpacing(6)
-            cell_layout.addWidget(QLabel(name))
-            selector = QPushButton(f"Axis {self._axis_spins[name].value()}")
-            selector.setObjectName("axisAssignButton")
-            selector.setFixedSize(96, 34)
-            mapping_grid.setRowMinimumHeight(row, 36)
-            self.axis_selector_buttons[name] = selector
-            cell_layout.addWidget(selector)
-            mapping_grid.addWidget(mapping_cell, row, column)
-            self.axis_selector_rows[name] = mapping_cell
-            selector.clicked.connect(lambda _checked=False, role=name: self._show_axis_choices(role))
-            self._axis_spins[name].valueChanged.connect(lambda value, role=name: self._axis_spin_changed(role, value))
-        self._refresh_axis_selectors()
-        joystick_layout.addWidget(mapping_group)
+        self.axis_assignment_button = QPushButton("Assign joystick axes…")
+        self.axis_assignment_button.setObjectName("axisAssignmentButton")
+        self.axis_assignment_button.setMinimumHeight(38)
+        self.axis_assignment_button.clicked.connect(self._open_axis_assignment)
+        joystick_layout.addWidget(self.axis_assignment_button)
 
         self.run_button = QPushButton("Start measurement")
         self.run_button.setObjectName("startMeasurement")
@@ -503,46 +482,18 @@ class MainWindow(QMainWindow):
             action.setChecked(key == self.theme_mode)
         self._apply_theme()
 
-    def _axis_count(self) -> int:
-        joystick = self.common_page.joystick
-        if self.common_page.joystick_active and joystick is not None:
-            try:
-                return max(1, int(joystick.get_numaxes()))
-            except Exception:
-                pass
-        return 17
-
-    def _refresh_axis_selectors(self) -> None:
-        if not hasattr(self, "axis_selectors"):
-            return
-        for role, selector in self.axis_selector_buttons.items():
-            selected_axis = self._axis_spins[role].value()
-            selector.setText(f"Axis {selected_axis}")
-            selector.setToolTip(f"{role} uses joystick axis {selected_axis}. Click to change.")
-
-    def _show_axis_choices(self, role: str) -> None:
-        menu = QMenu(self.axis_selector_buttons[role])
-        selected_axis = self._axis_spins[role].value()
-        count = self._axis_count()
-        for axis_index in range(count):
-            action = menu.addAction(f"Axis {axis_index}")
-            action.setCheckable(True)
-            action.setChecked(axis_index == selected_axis)
-            action.triggered.connect(lambda _checked=False, chosen=axis_index, axis_role=role: self._axis_selection_changed(axis_role, chosen))
-        if selected_axis >= count:
-            menu.addAction(f"Axis {selected_axis} (currently unavailable)").setEnabled(False)
-        button = self.axis_selector_buttons[role]
-        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
-
-    def _axis_selection_changed(self, role: str, axis_index: int) -> None:
-        self._axis_spins[role].setValue(axis_index)
-        self._update_joystick_feedback(self.common_page.latest_axis_values)
-
-    def _axis_spin_changed(self, role: str, value: int) -> None:
-        selector = self.axis_selector_buttons.get(role)
-        if selector is not None:
-            selector.setText(f"Axis {value}")
-            selector.setToolTip(f"{role} uses joystick axis {value}. Click to change.")
+    def _open_axis_assignment(self) -> None:
+        mapping = {role: spin.value() for role, spin in self._axis_spins.items()}
+        dialog = AxisAssignmentDialog(self.common_page, mapping, self)
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                for role, axis_index in dialog.values().items():
+                    spin = self._axis_spins[role]
+                    spin.setMaximum(max(spin.maximum(), axis_index))
+                    spin.setValue(axis_index)
+                self._update_joystick_feedback(self.common_page.latest_axis_values)
+        finally:
+            dialog.stop()
 
     def _sync_selection_labels(self) -> None:
         participant = self.participant_combo.currentText().strip()
@@ -691,7 +642,7 @@ class MainWindow(QMainWindow):
                 QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
                 QPushButton#joystickButton[state="connected"] {{ color: #20b865; }}
                 QPushButton#joystickButton[state="disconnected"] {{ color: #ef5962; }}
-                QPushButton#axisAssignButton {{ text-align: center; min-height: 30px; padding: 2px 5px; font-weight: 600; }}
+                QPushButton#axisAssignmentButton {{ text-align: center; padding: 6px 10px; font-weight: 600; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
                 QLabel#measurementStatus {{ background: transparent; border: none; font-size: 8pt; font-weight: 700; letter-spacing: .3px; }}
                 QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
@@ -781,7 +732,6 @@ class MainWindow(QMainWindow):
         self.joystick_button.setProperty("state", "connected" if connected else "disconnected")
         self.joystick_button.style().unpolish(self.joystick_button)
         self.joystick_button.style().polish(self.joystick_button)
-        self._refresh_axis_selectors()
         self._update_joystick_feedback(self.common_page.latest_axis_values)
         if hasattr(self, "run_button"):
             self._update_run_availability(connected)
