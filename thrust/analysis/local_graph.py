@@ -210,12 +210,7 @@ def save_local_response_graph(
         f"Participant ID: {participant_label} · Test date/time: {_format_test_time(analysis.get('started_at'))}",
         ha="center", va="top", fontsize=8.5, color="#465468",
     )
-    figure.text(
-        0.5, 0.934,
-        "Onset: sustained deviation above max(2% of input step, 3× baseline MAD)",
-        ha="center", va="top", fontsize=7.5, color="#667085",
-    )
-    figure.tight_layout(rect=(0, 0, 1, 0.905))
+    figure.tight_layout(rect=(0, 0, 1, 0.925))
 
     raw_path = Path(raw_log_path)
     base = raw_path.name
