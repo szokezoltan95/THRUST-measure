@@ -40,6 +40,23 @@ class SimpleFlightTests(unittest.TestCase):
         self.assertFalse(copter.crashed)
         self.assertEqual(copter.position, [0.0, config.copter_radius_m])
 
+    def test_ceiling_and_ground_are_solid(self) -> None:
+        config = SimpleConfig()
+        copter = Copter(config)
+        for _ in range(100):
+            if copter.update(0.1, 1, 0):
+                break
+        self.assertTrue(copter.crashed)
+        self.assertLessEqual(copter.position[1], config.world_height_m - config.copter_radius_m)
+        copter.reset()
+        for _ in range(12):
+            copter.update(0.1, 1, 0)
+        for _ in range(100):
+            if copter.update(0.1, 0, 0):
+                break
+        self.assertTrue(copter.crashed)
+        self.assertEqual(copter.position[1], config.copter_radius_m)
+
     def test_invalid_targets_rejected(self) -> None:
         for field in (
             {"target_x_limit_m": 2.5},
