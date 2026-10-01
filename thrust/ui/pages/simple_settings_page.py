@@ -152,12 +152,6 @@ class SimpleSettingsPage(QWidget):
         self.countdown_s.setValue(config.countdown_s)
         self.completion_radius.setValue(config.completion_radius_m)
         self.world_width.setValue(config.world_width_m)
-        self.x_limit.setValue(config.target_x_limit_m)
-        self.y_min.setValue(config.target_y_min_m)
-        self.pattern.setCurrentIndex(max(0, self.pattern.findData(config.target_pattern)))
-        self.route_points.setValue(config.route_points)
-        self.copter_radius.setValue(config.copter_radius_m)
-        self.y_limit.setValue(config.target_y_max_m)
         selected = None
         for index in range(self.resolution.count()):
             if self.resolution.itemData(index) == (config.field_width_px, config.field_height_px):
@@ -168,6 +162,12 @@ class SimpleSettingsPage(QWidget):
             self.resolution.addItem(f"{size[0]} × {size[1]} · aktuálne", size)
             selected = self.resolution.count() - 1
         self.resolution.setCurrentIndex(selected)
+        self.copter_radius.setValue(config.copter_radius_m)
+        self.x_limit.setValue(config.target_x_limit_m)
+        self.y_min.setValue(config.target_y_min_m)
+        self.pattern.setCurrentIndex(max(0, self.pattern.findData(config.target_pattern)))
+        self.route_points.setValue(config.route_points)
+        self.y_limit.setValue(config.target_y_max_m)
         self.mass.setValue(config.mass_kg)
         self.max_thrust.setValue(config.max_thrust_n)
         self.drag.setValue(config.drag_coefficient)
