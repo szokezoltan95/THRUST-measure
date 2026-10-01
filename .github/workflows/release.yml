@@ -1,7 +1,7 @@
-name: Build THRUST-measure 1.0
+name: Build THRUST-measure 1.0.1
 on:
   push:
-    branches: [release/v1.0.0]
+    branches: [release/v1.0.1]
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,7 +27,8 @@ jobs:
       - name: Build standalone application
         run: |
           python -m pip install '.[gui]' pyinstaller
-          python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon THRUST.ico --add-data "THRUST.ico;." --add-data "profiles;profiles" --collect-data thrust main.py
+          python scripts/render_splash.py .release-assets/splash.png
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon THRUST.ico --splash .release-assets/splash.png --add-data "THRUST.ico;." --add-data "profiles;profiles" --collect-data thrust main.py
       - name: Compile GUI installer
         shell: pwsh
         run: |
@@ -77,7 +78,7 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --add-data "THRUST.ico:." --add-data "profiles:profiles" --collect-data thrust main.py
           mkdir -p release
-          pkgbuild --component dist/THRUST-measure.app --install-location /Applications --identifier sk.tuke.lf.thrust.measure --version 1.0.0 "release/THRUST-measure-1.0.0-macos-${{ matrix.arch }}.pkg"
+          pkgbuild --component dist/THRUST-measure.app --install-location /Applications --identifier sk.tuke.lf.thrust.measure --version 1.0.1 "release/THRUST-measure-1.0.1-macos-${{ matrix.arch }}.pkg"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
@@ -88,7 +89,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    if: github.ref == 'refs/heads/release/v1.0.0'
+    if: github.ref == 'refs/heads/release/v1.0.1'
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -99,4 +100,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v1.0.0 release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure 1.0.0" --notes "Standalone installers for Windows x64, Linux amd64, macOS Intel and Apple Silicon. Python and dependencies are bundled. See README for installation notes."
+          gh release create v1.0.1 release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure 1.0.1" --notes "Adds a loading screen while the measurement client starts. Windows displays it from the bundled launcher; Linux and macOS display it during application initialization. Python and dependencies remain bundled."
