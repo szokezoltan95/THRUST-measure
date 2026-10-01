@@ -184,10 +184,10 @@ def save_local_response_graph(
             )
             # Keep series labels below the per-axis metrics card, away from the SD band.
             axis.legend(
-                loc="lower right", frameon=True, framealpha=0.92,
+                loc="lower right", bbox_to_anchor=(0.98, 0.0), frameon=True, framealpha=0.92,
                 facecolor="white", edgecolor="#d9e0e8", ncol=1,
                 fontsize=6.2, labelspacing=0.12, handlelength=1.5,
-                borderaxespad=0.25,
+                borderaxespad=0,
             )
 
         axis.set_ylim(*FIXED_Y_LIMITS)
