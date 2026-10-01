@@ -1325,6 +1325,7 @@ class MainWindow(QMainWindow):
                 session_summary={
                     "completed": getattr(session, "total_completed", 0),
                     "mistakes": getattr(session, "total_mistakes", 0),
+                    "crashes": getattr(session, "crash_count", 0),
                     "aborted": getattr(session, "aborted", False),
                     "abort_reason": getattr(session, "abort_reason", ""),
                 },
