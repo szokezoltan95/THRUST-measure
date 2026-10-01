@@ -33,11 +33,11 @@ For development on another platform:
 ```console
 python -m venv .venv
 .venv/bin/python -m pip install -e '.[gui]'
-.venv/bin/python -m thrust.app
+.venv/bin/thrust-measure
 ```
 
-On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
-The `thrust-measure` GUI entry point is installed with the `gui` extra.
+On Windows, use `.venv\Scripts\python.exe` for Python commands and
+`.venv\Scripts\thrust-measure.exe` for the GUI entry point.
 
 ## WebDB connection and profiles
 
