@@ -58,6 +58,7 @@ class SimpleSettingsPage(QWidget):
         self.world_width.valueChanged.connect(self._update_derived_height)
         self.completion_radius.valueChanged.connect(self._update_derived_height)
         self.copter_radius.valueChanged.connect(self._update_derived_height)
+        self.y_min.valueChanged.connect(self._update_derived_height)
         self.mass = self._spin(.1, 10, .8, 2, .1)
         self.max_thrust = self._spin(1, 100, 16, 2, .5)
         self.drag = self._spin(0, 5, .3, 3, .05)
