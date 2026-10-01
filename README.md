@@ -25,6 +25,27 @@ For meaningful research use, connect to the WebDB instance provided by your stud
 
 If you are joining a study, ask its organizer for access to the correct WebDB and instructions for the test and controller. Do not use another study's participant ID or test configuration.
 
+## How the system works
+
+THRUST is made up of two cooperating parts:
+
+1. **THRUST-measure** runs on the participant's computer. It connects to a joystick or radio controller, presents the selected SCoPE or SimPLE task, records time-stamped control inputs and task events, and calculates the per-measurement analysis.
+2. **THRUST-WebDB** coordinates the study. The desktop app signs in to the WebDB service over HTTPS to obtain participant and test information and to upload completed results. The app communicates with the service through its web API; it does not connect directly to the database.
+
+The WebDB service has a web interface, an API, and a PostgreSQL database. It manages accounts and permissions, participants, test versions, and saved measurements. It also provides study-level and cohort comparisons.
+
+### What is recorded
+
+After a session, THRUST-measure saves a compressed raw measurement log and a separate analysis file in the user's `Documents/THRUST/output` folder. Depending on the task, these contain controller inputs, requested actions, timing, task events, and calculated measures such as response and tracking performance.
+
+When connected to WebDB, the app uploads the measurement and its analysis to the selected study. The server checks and stores the submitted result; it does not repeat the per-measurement calculations. Group statistics and comparisons are handled separately in WebDB.
+
+### Keeping test results comparable
+
+A WebDB test version identifies the test configuration participants should perform. The result is associated with that version and its analysis settings, so researchers can distinguish measurements made under different conditions. Comparisons are most useful when participants use the same test version, controller setup, and procedure.
+
+Measurements are associated with participant IDs and stored under the study's WebDB access rules. Follow the study team's instructions and consent information when collecting or handling participant data.
+
 ## Installation
 
 Download the package for your computer from [Releases](https://github.com/szokezoltan95/THRUST-measure/releases).
