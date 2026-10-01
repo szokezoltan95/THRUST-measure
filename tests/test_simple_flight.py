@@ -57,6 +57,40 @@ class SimpleFlightTests(unittest.TestCase):
         self.assertTrue(copter.crashed)
         self.assertEqual(copter.position[1], config.copter_radius_m)
 
+    def test_gentle_wall_and_ceiling_contacts_bounce(self) -> None:
+        config = SimpleConfig()
+        copter = Copter(config)
+        copter.position = [config.world_width_m / 2 - config.copter_radius_m - .01, 1.0]
+        copter.velocity = [2.0, 0.0]
+        copter.airborne = True
+        self.assertFalse(copter.update(.01, 0.0, 0.0))
+        self.assertFalse(copter.crashed)
+        self.assertLess(copter.velocity[0], 0)
+        self.assertLess(abs(copter.velocity[0]), 2.0)
+
+        copter.position = [0.0, config.world_height_m - config.copter_radius_m - .01]
+        copter.velocity = [0.0, 2.0]
+        self.assertFalse(copter.update(.01, 0.0, 0.0))
+        self.assertLess(copter.velocity[1], 0)
+
+    def test_gentle_landing_bounces_but_hard_landing_crashes(self) -> None:
+        config = SimpleConfig()
+        copter = Copter(config)
+        copter.airborne = True
+        copter.position = [0.0, config.copter_radius_m + .02]
+        copter.velocity = [0.0, -2.0]
+        self.assertFalse(copter.update(.02, 0.0, 0.0))
+        self.assertEqual(copter.position[1], config.copter_radius_m)
+        self.assertGreater(copter.velocity[1], 0)
+        self.assertFalse(copter.crashed)
+
+        copter.position = [0.0, config.copter_radius_m + .05]
+        copter.velocity = [0.0, -5.0]
+        self.assertTrue(copter.update(.01, 0.0, 0.0))
+        self.assertTrue(copter.crashed)
+        copter.reset()
+        self.assertFalse(copter.crashed)
+
     def test_invalid_targets_rejected(self) -> None:
         for field in (
             {"target_x_limit_m": 2.5},

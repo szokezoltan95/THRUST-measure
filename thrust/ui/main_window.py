@@ -11,6 +11,7 @@ from typing import Any
 
 from PyQt6.QtCore import QSettings, QTimer, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QActionGroup, QColor, QDesktopServices, QFont, QGuiApplication, QPalette
+from PyQt6.QtSvgWidgets import QSvgWidget
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -367,10 +368,17 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(20, 16, 20, 16)
         root.setSpacing(10)
 
-        title = QLabel("THRUST")
-        title.setObjectName("appTitle")
         title_row = QHBoxLayout()
-        title_row.addWidget(title)
+        self.logo_widget: QSvgWidget | None = None
+        if (Path(__file__).resolve().parent / "THRUST_LOGO.svg").is_file():
+            self.logo_widget = QSvgWidget()
+            self.logo_widget.setFixedSize(160, 48)
+            self.logo_widget.setAccessibleName("THRUST")
+            title_row.addWidget(self.logo_widget)
+        else:
+            title = QLabel("THRUST")
+            title.setObjectName("appTitle")
+            title_row.addWidget(title)
         title_row.addStretch()
         self.appearance_button = QToolButton()
         self.appearance_button.setObjectName("appearanceButton")
@@ -609,6 +617,12 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self) -> None:
         dark = self._selected_theme_is_dark()
+        if self.logo_widget is not None:
+            logo_dir = Path(__file__).resolve().parent
+            logo_path = logo_dir / ("THRUST_LOGO.svg" if dark else "THRUST_LOGO_black.svg")
+            if not logo_path.is_file():
+                logo_path = logo_dir / "THRUST_LOGO.svg"
+            self.logo_widget.load(str(logo_path))
         colors = (
             {
                 "window": "#111820", "surface": "#18232d", "surface_alt": "#202e39",

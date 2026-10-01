@@ -7,7 +7,12 @@ from simple.simple_config import SimpleConfig
 
 
 class Copter:
-    """2D rigid disc with solid side and ceiling barriers and a grounded crash state."""
+    """2D rigid disc with solid barriers and speed-dependent collisions."""
+
+    WALL_CRASH_SPEED_M_S = 2.5
+    GROUND_CRASH_SPEED_M_S = 5.0
+    WALL_RESTITUTION = 0.35
+    GROUND_RESTITUTION = 0.25
 
     def __init__(self, config: SimpleConfig) -> None:
         self.config = config
@@ -24,8 +29,14 @@ class Copter:
         self.crashed = False
         self.airborne = False
 
+    def _crash(self) -> bool:
+        self.velocity[:] = [0.0, 0.0]
+        self.acceleration[:] = [0.0, 0.0]
+        self.crashed = True
+        return True
+
     def update(self, dt: float, throttle: float, angle: float) -> bool:
-        """Advance simulation; return True only for a new collision."""
+        """Advance simulation; return True only when an impact causes a crash."""
         dt = min(max(dt, 0.0), 0.1)
         radius = self.config.copter_radius_m
         self.angle = angle if not self.crashed else 0.0
@@ -49,23 +60,32 @@ class Copter:
 
         half_width = self.config.world_width_m / 2 - radius
         ceiling = self.config.world_height_m - radius
-        hit_barrier = abs(self.position[0]) >= half_width or self.position[1] >= ceiling
-        self.position[0] = max(-half_width, min(half_width, self.position[0]))
-        self.position[1] = min(ceiling, self.position[1])
-        if hit_barrier or (self.airborne and self.position[1] <= radius and self.velocity[1] < 0):
-            self.position[1] = max(radius, self.position[1])
-            self.velocity[:] = [0.0, 0.0]
-            self.acceleration[:] = [0.0, 0.0]
-            self.crashed = True
-            return True
-        if self.position[1] <= radius:
+
+        if self.position[0] < -half_width or self.position[0] > half_width:
+            self.position[0] = max(-half_width, min(half_width, self.position[0]))
+            if abs(self.velocity[0]) >= self.WALL_CRASH_SPEED_M_S:
+                self.position[1] = max(radius, min(ceiling, self.position[1]))
+                return self._crash()
+            self.velocity[0] *= -self.WALL_RESTITUTION
+            self.velocity[1] *= 0.8
+
+        if self.position[1] > ceiling:
+            self.position[1] = ceiling
+            if self.velocity[1] >= self.WALL_CRASH_SPEED_M_S:
+                return self._crash()
+            self.velocity[1] = -abs(self.velocity[1]) * self.WALL_RESTITUTION
+            self.velocity[0] *= 0.8
+
+        if self.position[1] < radius:
             self.position[1] = radius
-            self.velocity[1] = max(0.0, self.velocity[1])
-            self.velocity[0] *= 0.98
+            impact_speed = max(0.0, -self.velocity[1])
+            if self.airborne and impact_speed >= self.GROUND_CRASH_SPEED_M_S:
+                return self._crash()
+            self.velocity[1] = impact_speed * self.GROUND_RESTITUTION if impact_speed > 0.5 else 0.0
+            self.velocity[0] *= 0.8
         elif self.position[1] > radius + 0.01:
             self.airborne = True
         return False
-
 
 class TargetSequence:
     """Bounded random targets or repeated slalom/circuit waypoint patterns."""
