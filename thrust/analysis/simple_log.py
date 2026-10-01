@@ -91,7 +91,7 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
         if missing:
             raise SimpleLogError(f"SimPLE log is missing columns: {sorted(missing)}")
         numeric_columns = REQUIRED_COLUMNS | (
-            {"IN_ZONE", "ACTION", "RESET", "ROLL", "THROTTLE"}
+            {"IN_ZONE", "ACTION", "RESET", "ROLL", "THROTTLE", "CRASH"}
             & set(reader.fieldnames or [])
         )
         for line, raw in enumerate(reader, start=2):
@@ -124,6 +124,8 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
     in_zone = [float(row.get("IN_ZONE", 0.0)) for row in rows]
     actions = [row.get("ACTION", 0.0) for row in rows]
     resets = [row.get("RESET", 0.0) for row in rows]
+    crashes = [row.get("CRASH", 0.0) for row in rows]
+    crash_edges = sum(1 for index, value in enumerate(crashes) if value > 0.5 and (index == 0 or crashes[index - 1] <= 0.5))
     action_count = max(actions, default=0.0)
     reset_edges = sum(1 for index, value in enumerate(resets) if value > 0.5 and (index == 0 or resets[index - 1] <= 0.5))
     channels = {
@@ -139,6 +141,7 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
         "simple_sampling_hz": hz,
         "simple_action_count": action_count,
         "simple_reset_count": reset_edges,
+        "simple_crash_count": crash_edges,
         "simple_mean_target_error_m": statistics.fmean(distances),
         "simple_median_target_error_m": statistics.median(distances),
         "simple_rms_target_error_m": math.sqrt(statistics.fmean(value * value for value in distances)),
@@ -161,6 +164,11 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
                 "duration_s": segment[-1]["Time[s]"] - first["Time[s]"],
                 "request": {"x": first["REQX"], "y": first["REQY"]},
                 "in_zone_fraction": statistics.fmean(row.get("IN_ZONE", 0.0) for row in segment),
+                "crash_count": sum(
+                    1 for index, row in enumerate(segment)
+                    if row.get("CRASH", 0.0) > 0.5
+                    and (begin + index == 0 or rows[begin + index - 1].get("CRASH", 0.0) <= 0.5)
+                ),
                 "reset_count": sum(
                     1 for index, row in enumerate(segment)
                     if row.get("RESET", 0.0) > 0.5
@@ -171,7 +179,7 @@ def analyze_simple_log(path: str | Path, *, started_at: str | None = None) -> di
     return {
         "schema_version": "thrust-analysis-v1",
         "analysis_type": "SIMPLE_2D_FLIGHT",
-        "algorithm_version": "simple-basic-1.0.0",
+        "algorithm_version": "simple-basic-1.1.0",
         "source_format": "SIMPLE_TSV_V1",
         "source_file": source.name,
         "started_at": started_at or datetime.fromtimestamp(source.stat().st_mtime, timezone.utc).isoformat(),
