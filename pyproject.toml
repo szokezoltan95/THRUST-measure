@@ -28,4 +28,4 @@ include = ["thrust*", "scope*", "simple*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-thrust = ["assets/*", "ui/*.svg"]
+thrust = ["assets/*", "ui/*.svg", "ui/*.txt"]

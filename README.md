@@ -1,174 +1,68 @@
-# THRUST
+# THRUST-measure
 
-**THRUST (Testing Hub for Research in UAV Simulation and Training)** is a modular platform for UAV control training, human performance experiments, and flight control evaluation.
+THRUST (Testing Hub for Research in UAV Simulation and Training) is a desktop
+measurement client for UAV control research. Its PyQt6 launcher configures the
+joystick, selects an online WebDB test or an offline profile, and starts the
+Pygame-based SCoPE and SimPLE experiments.
 
-The system integrates multiple experimental tools into a single environment with a unified configuration interface.
+## Modules and results
 
-Currently supported modules:
+- **SCoPE** measures control response, tracking error, reaction, and stability.
+- **SimPLE** simulates a 2D UAV with configurable dynamics and boundaries.
+- Each recording produces a compressed raw log and adjacent versioned
+  `.analysis.json` file in `Documents/THRUST/output`. The analysis includes
+  statistics, events, quality flags, and normalized response curves.
+- WebDB validates the raw hash and saved analysis, stores individual results
+  without recalculating them, and computes group comparisons separately.
 
-- **SCoPE** – control performance experiment platform
-- **SimPLE** – lightweight UAV dynamics simulator
+## Windows installation
 
+Clone the repository and double-click `install_thrust.bat`. Read the displayed
+license notice and choose **Y** to continue. The installer finds a supported
+Python 3.11+ installation, creates `.venv`, installs the GUI dependencies,
+and creates a **THRUST-measure** desktop shortcut. Choose **N** to exit before
+installation. The full terms are in [EULA.txt](EULA.txt) and [LICENSE](LICENSE).
 
----
+The shortcut starts the GUI without a console window. Following `git pull`,
+launch the shortcut to run updated editable source. Rerun the installer after
+changes to `pyproject.toml` or the Python environment. The terminal entry point
+`thrust` remains available inside `.venv` for troubleshooting.
 
-## Project Goals
+For development on another platform:
 
-THRUST is designed to support research and training in:
+```console
+python -m venv .venv
+.venv/bin/python -m pip install -e '.[gui]'
+.venv/bin/python -m thrust.app
+```
 
-- UAV manual control
-- pilot skill development
-- human‑machine interaction
-- flight control behaviour analysis
-- experimental evaluation of control interfaces
+On Windows, replace `.venv/bin/python` with `.venv\Scripts\python.exe`.
+The `thrust-measure` GUI entry point is installed with the `gui` extra.
 
-The platform focuses on:
+## WebDB connection and profiles
 
-- lightweight simulations
-- reproducible experiments
-- configurable experimental setups
-- structured data collection
+Connect using your WebDB credentials, select an active test version and a
+participant ID, then assign joystick axes using the Axis assignment dialog.
+In offline mode, the SCoPE/SimPLE settings come from local profiles. Test
+versions and their analysis configuration should be kept with each result so
+later changes do not alter historical interpretation.
 
+## Import older or offline logs
 
----
-
-## Architecture Overview
-
-Project structure:
-
-THRUST
-│
-├─ thrust      # main framework and launcher
-├─ scope       # SCoPE experiment module
-├─ simple      # SimPLE UAV simulator
-├─ profiles    # experiment configuration profiles
-├─ docs        # documentation
-└─ tests       # automated tests
-
-
----
-
-## Modules
-
-### SCoPE
-SCoPE is an experimental platform used to evaluate pilot control performance.
-
-It measures:
-
-- tracking accuracy
-- response time
-- stability
-- control error metrics
-- learning progress over time
-
-
-### SimPLE
-SimPLE is a lightweight UAV dynamics simulator used for training and behavioural experiments.
-
-Features:
-
-- configurable UAV physics
-- 2D motion simulation
-- configurable maneuver workspace
-- customizable visual environment
-- joystick control
-
-
----
-
-## Experiment Outputs
-
-Experimental results are stored outside the repository.
-
-Default location:
-
-Documents/THRUST
-
-
-Example structure:
-
-Documents/THRUST
-│
-├─ scope
-│   └─ 2026-03-13
-│
-└─ simple
-    └─ 2026-03-13
-
-
-Raw experiment data are stored as CSV or JSON files for later analysis.
-
-
----
-
-## Configuration Profiles
-
-Experiment configurations are stored in:
-
-profiles/
-
-Profiles allow reproducible experiments and easy switching between setups.
-
-
----
-
-## Install and run on Windows
-
-Clone the repository, then double-click `install_thrust.bat` in its root folder. The installer reports each step, selects the newest supported Python 3.11+ installation it can find (including installations registered with the `py` launcher), creates `.venv`, and installs the GUI dependencies declared in `pyproject.toml`.
-
-It creates a **THRUST-measure** shortcut on the Windows Desktop. The shortcut uses the `thrust-measure` GUI entry point, so it opens the application without showing a Command Prompt window. The installation is editable: after pulling source changes, run the desktop shortcut again; rerun `install_thrust.bat` after dependency changes.
-
-The traditional console entry point remains available as `thrust` inside the virtual environment for development and troubleshooting.
-
-
-
----
-
-## Development Status
-
-Early development stage.
-
-Current focus:
-
-- core architecture
-- configuration system
-- PyQt launcher
-- integration of SCoPE and SimPLE
-
-
----
+Put historical files in `Documents/THRUST/import` and run
+`import_measurements.bat --dry-run` for a preview. The importer recognizes
+SCoPE/SimPLE logs with a five-character participant ID, runs the same
+analysis pipeline, creates missing participants when authorized, and reuses a
+matching test version or creates a `LEGACY_…` test version. The originals are
+kept locally. Run `import_measurements.bat --watch` to scan import and output
+folders continuously, or use the **Legacy files** action in the launcher.
+The importer requests WebDB credentials unless supplied through
+`THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD`; `--webdb` overrides the
+server address.
 
 ## License
 
-Research / academic use.
-License to be defined.
-
-## Measurement files
-
-THRUST-measure saves one compressed raw log and one adjacent `.analysis.json`
-sidecar for each recorded test. The sidecar contains the versioned basic
-statistics, event/task boundaries, quality indicators, and normalized response
-points used to draw the graphs. The WebDB stores and displays these values
-without recalculating an individual measurement. Pygame renders the two test
-scenes; PyQt6 remains the launcher and settings interface.
-
-
-## Import old or offline measurements
-
-The standalone importer searches recursively in `Documents/THRUST/import`. Put historical logs there and double-click `import_measurements.bat`. It recognizes SCoPE and SimPLE filenames containing a five-character participant ID, runs the same SCoPE/SimPLE analysis functions as THRUST-measure, creates missing participants, reuses a matching test code/version when possible, and otherwise creates a `LEGACY_…` test version. It uploads the compressed raw log and analysis to WebDB; the original local log is kept unchanged.
-
-Try a preview first:
-
-```bat
-import_measurements.bat --dry-run
-```
-
-To keep the tool running and automatically upload completed offline measurements, start:
-
-```bat
-import_measurements.bat --watch
-```
-
-Watch mode checks the import folder and `Documents/THRUST/output` every five seconds. It waits until a file has stopped changing, then analyzes and uploads it. Stop it with `Ctrl+C`. The importer asks for the WebDB username and password; alternatively set `THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD` in the environment. Use an Admin or SuperAdmin account so it can create missing participants, or a Researcher account when every participant already exists. The WebDB URL can be changed with `--webdb`.
-
-Each raw log is paired with a versioned `.analysis.json` file beside it. Uploaded files are detected by their raw-content hash, so a later scan skips an identical log already in WebDB.
+Copyright © 2026 Zoltán Szőke. Source code is licensed under the
+[MIT License](LICENSE). The installer displays [EULA.txt](EULA.txt) before
+making changes to the computer. Third-party dependencies retain their own
+applicable licenses.
