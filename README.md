@@ -42,7 +42,7 @@ The Windows and macOS installers are not currently signed. Windows may show a Sm
 
 ### Windows source installation
 
-If you prefer to use the source package, download the **Source code (zip)** from a release, extract it to a permanent folder, and run `install_thrust.bat`. This method requires Python 3.11 or newer and an internet connection to install the required libraries. It creates a virtual environment and a desktop shortcut in the extracted installation folder. Keep that folder in place after installation.
+If you prefer to use the source package, download the **Source code (zip)** from a release, extract it to a permanent folder, and run `install_thrust.bat`. This method requires Python 3.11 or newer and an internet connection to install the required libraries. It creates a virtual environment in the extracted folder and a desktop shortcut that points to it. Keep that folder in place after installation.
 
 ## License
 
