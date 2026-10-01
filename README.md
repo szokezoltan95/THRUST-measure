@@ -15,20 +15,30 @@ Pygame-based SCoPE and SimPLE experiments.
 - WebDB validates the raw hash and saved analysis, stores individual results
   without recalculating them, and computes group comparisons separately.
 
-## Windows installation
+## Install version 1.0
 
-Clone the repository and double-click `install_thrust.bat`. Read the displayed
-license notice and choose **Y** to continue. The installer finds a supported
-Python 3.11+ installation, creates `.venv`, installs the GUI dependencies,
-and creates a **THRUST-measure** desktop shortcut. Choose **N** to exit before
-installation. The full terms are in [EULA.txt](EULA.txt) and [LICENSE](LICENSE).
+Download the installer for your system from [Releases](https://github.com/szokezoltan95/THRUST-measure/releases).
+These packages contain Python and all required application libraries. You do
+not need Git, a system Python installation, pip, or a separate virtual
+environment.
 
-The shortcut starts the GUI without a console window. Following `git pull`,
-launch the shortcut to run updated editable source. Rerun the installer after
-changes to `pyproject.toml` or the Python environment. The terminal entry point
-`thrust` remains available inside `.venv` for troubleshooting.
+| Platform | Package | Installation |
+| --- | --- | --- |
+| Windows x64 | `*-windows-x64-setup.exe` | Run the wizard, accept the license and select a destination. A Start menu entry and optional desktop shortcut are created. |
+| Ubuntu/Debian amd64 | `*-linux-amd64.deb` | Open with your package manager, or run `sudo apt install ./THRUST-measure-1.0.0-linux-amd64.deb`. Launch from the application menu. To put an icon on the desktop, copy `/usr/share/applications/thrust-measure.desktop` to `~/Desktop/` and mark it trusted in the desktop environment. |
+| macOS Intel or Apple Silicon | `*-macos-x64.pkg` or `*-macos-arm64.pkg` | Run the installer to place the app in Applications; drag it from Applications to the Dock for a shortcut. |
 
-For development on another platform:
+The macOS packages are currently unsigned and not notarized. macOS may
+prevent launching them until the user explicitly permits the app in System
+Settings. The Windows package is also unsigned and may show a SmartScreen
+warning. Distribution signing is planned for a later build.
+
+The old `install_thrust.bat` is still available for a source checkout. It
+creates `.venv` in the checkout and installs dependencies there; it is not
+needed for these standalone installers. Updates to the installed application
+come from a new installer release, not from `git pull`.
+
+## Development from source
 
 ```console
 python -m venv .venv
@@ -50,15 +60,25 @@ later changes do not alter historical interpretation.
 ## Import older or offline logs
 
 Put historical files in `Documents/THRUST/import` and run
-`import_measurements.bat --dry-run` for a preview. The importer recognizes
-SCoPE/SimPLE logs with a five-character participant ID, runs the same
-analysis pipeline, creates missing participants when authorized, and reuses a
-matching test version or creates a `LEGACY_…` test version. The originals are
-kept locally. Run `import_measurements.bat --watch` to scan import and output
-folders continuously, or use the **Legacy files** action in the launcher.
+`import_measurements.bat --dry-run` from a source checkout for a preview.
+The importer recognizes SCoPE/SimPLE logs with a five-character participant
+ID, runs the same analysis pipeline, creates missing participants when
+authorized, and reuses a matching test version or creates a `LEGACY_…` test
+version. The originals are kept locally. Run
+`import_measurements.bat --watch` to scan import and output folders
+continuously, or use the **Legacy files** action in the launcher.
 The importer requests WebDB credentials unless supplied through
-`THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD`; `--webdb` overrides the
-server address.
+`THRUST_WEBDB_USERNAME` and `THRUST_WEBDB_PASSWORD`; `--webdb` overrides
+the server address.
+
+## Release process
+
+The `release/v1.0.0` branch runs tests and builds the four platform packages
+in GitHub Actions. The publish job creates tag `v1.0.0` and the release only
+after every package job succeeds. The packages use PyInstaller to bundle the
+interpreter and dependencies; the development installation keeps its venv.
+The release workflow and platform packaging definitions are under
+`.github/workflows/release.yml` and `packaging/`.
 
 ## License
 

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=THRUST-measure
+Comment=UAV pilot measurement client
+Exec=/opt/thrust-measure/THRUST-measure
+Icon=thrust-measure
+Terminal=false
+Categories=Education;Science;
+StartupNotify=true

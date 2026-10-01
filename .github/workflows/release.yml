@@ -1,0 +1,102 @@
+name: Build THRUST-measure 1.0
+on:
+  push:
+    branches: [release/v1.0.0]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install '.[gui]' pytest
+      - run: QT_QPA_PLATFORM=offscreen SDL_VIDEODRIVER=dummy python -m pytest -q
+  windows:
+    needs: test
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build standalone application
+        run: |
+          python -m pip install '.[gui]' pyinstaller
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon THRUST.ico --add-data "THRUST.ico;." --add-data "profiles;profiles" --collect-data thrust main.py
+      - name: Compile GUI installer
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'packaging\windows\THRUST-measure.iss'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: release/*.exe
+          if-no-files-found: error
+  linux:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install '.[gui]' pyinstaller pillow
+      - name: Bundle and package
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --add-data "THRUST.ico:." --add-data "profiles:profiles" --collect-data thrust main.py
+          python -c "from PIL import Image; im=Image.open('THRUST.ico'); im.thumbnail((256,256)); im.save('build/thrust-measure.png')"
+          bash packaging/linux/build-deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: release/*.deb
+          if-no-files-found: error
+  macos:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install '.[gui]' pyinstaller
+      - name: Bundle and package
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --add-data "THRUST.ico:." --add-data "profiles:profiles" --collect-data thrust main.py
+          mkdir -p release
+          pkgbuild --component dist/THRUST-measure.app --install-location /Applications --identifier sk.tuke.lf.thrust.measure --version 1.0.0 "release/THRUST-measure-1.0.0-macos-${{ matrix.arch }}.pkg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: release/*.pkg
+          if-no-files-found: error
+  publish:
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    if: github.ref == 'refs/heads/release/v1.0.0'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          merge-multiple: true
+          path: release
+      - name: Publish versioned installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.0.0 release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure 1.0.0" --notes "Standalone installers for Windows x64, Linux amd64, macOS Intel and Apple Silicon. Python and dependencies are bundled. See README for installation notes."

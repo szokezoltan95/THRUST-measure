@@ -1,10 +1,11 @@
 THRUST-measure installation license notice
 Copyright (c) 2026 Zoltán Szőke
 
-THRUST-measure is licensed under the MIT License reproduced below. By choosing
-Y in the installer, you acknowledge that you have read the license and ask
-the installer to create a local Python environment, install its dependencies,
-and create a desktop shortcut. Choosing N exits without starting installation.
+THRUST-measure is licensed under the MIT License reproduced below. The source installation script asks you to acknowledge this notice before it
+creates a virtual environment, installs dependencies, and creates a desktop
+shortcut. Standalone installers show this notice in their installation wizard
+and install a bundled Python runtime and dependencies; they do not create a
+separate virtual environment or modify a system Python installation.
 
 The MIT License grants the permissions stated below. This notice does not
 change those permissions or add restrictions. Third-party dependencies may
