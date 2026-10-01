@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("THRUST · measurement client")
-        self.resize(620, 900)
+        self.resize(620, 800)
         self.setMinimumSize(500, 700)
         self.settings = QSettings("THRUST", "THRUST-measure")
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
         selection_form.addRow("Participant ID:", self.participant_button)
         selection_form.addRow(self.test_row_label, self.test_row_widget)
         selection_group_layout.addLayout(selection_form)
+        selection_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         joystick_group = QGroupBox("Joystick link")
         joystick_layout = QVBoxLayout(joystick_group)
@@ -313,6 +314,7 @@ class MainWindow(QMainWindow):
         self.axis_assignment_button.setMinimumHeight(38)
         self.axis_assignment_button.clicked.connect(self._open_axis_assignment)
         joystick_layout.addWidget(self.axis_assignment_button)
+        joystick_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         self.run_button = QPushButton("Start measurement")
         self.run_button.setObjectName("startMeasurement")
@@ -405,12 +407,11 @@ class MainWindow(QMainWindow):
         controls_layout.setSpacing(8)
         controls_layout.addWidget(selection_group)
         controls_layout.addWidget(joystick_group)
-        controls_layout.addStretch(1)
-        controls_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        controls_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         root.addLayout(title_row)
         root.addWidget(session_ribbon)
-        root.addWidget(controls_panel, 1)
+        root.addWidget(controls_panel)
         root.addWidget(self.local_graphs_checkbox)
         root.addWidget(self.run_button)
         root.addLayout(status_row)
