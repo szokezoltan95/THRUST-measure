@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import math
-import random
 import re
 import time
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ import pygame
 
 from simple.simple_config import SimpleConfig
 from simple.simple_gui import SimpleGUI
+from simple.simple_physics import Copter, TargetSequence
 from thrust.paths import SIMPLE_OUTPUT_DIR
 from thrust.raw_compression import compress_raw_log
 
@@ -26,43 +26,9 @@ class SimpleSessionResult:
     completed_actions: int
     timed_out_actions: int
     reset_count: int
+    crash_count: int
     samples: int = 0
     aborted: bool = False
-
-
-class Copter:
-    """Simple two-dimensional thrust, gravity and quadratic-drag model."""
-
-    def __init__(self, config: SimpleConfig) -> None:
-        self.mass = config.mass_kg
-        self.max_thrust = config.max_thrust_n
-        self.drag = config.drag_coefficient
-        self.position = [0.0, 0.0]
-        self.velocity = [0.0, 0.0]
-        self.acceleration = [0.0, 0.0]
-        self.angle = 0.0
-
-    def reset(self) -> None:
-        self.position[:] = [0.0, 0.0]
-        self.velocity[:] = [0.0, 0.0]
-        self.acceleration[:] = [0.0, 0.0]
-        self.angle = 0.0
-
-    def update(self, dt: float, throttle: float, angle: float) -> None:
-        dt = min(max(dt, 0.0), 0.1)
-        self.angle = angle
-        thrust = min(1.0, max(0.0, throttle)) * self.max_thrust
-        ax = math.sin(angle) * thrust / self.mass - self.drag * self.velocity[0] * abs(self.velocity[0])
-        ay = math.cos(angle) * thrust / self.mass - 9.81 - self.drag * self.velocity[1] * abs(self.velocity[1])
-        self.acceleration[:] = [ax, ay]
-        self.velocity[0] += ax * dt
-        self.velocity[1] += ay * dt
-        self.position[0] += self.velocity[0] * dt
-        self.position[1] += self.velocity[1] * dt
-        if self.position[1] < 0.0:
-            self.position[1] = 0.0
-            self.velocity[1] = max(0.0, -self.velocity[1] * 0.35)
-            self.velocity[0] *= 0.98
 
 
 def _safe_name(value: str) -> str:
@@ -91,17 +57,6 @@ def _axis_value(controller, index: int) -> float:
 
 def _active(value: float) -> bool:
     return value > 0.7
-
-
-def _new_target(config: SimpleConfig, previous: tuple[float, float] | None) -> tuple[float, float]:
-    for _ in range(100):
-        candidate = (
-            random.uniform(-config.target_x_limit_m, config.target_x_limit_m),
-            random.uniform(0.1, config.target_y_max_m),
-        )
-        if previous is None or math.dist(candidate, previous) >= 0.55:
-            return candidate
-    return 0.0, min(config.target_y_max_m, 1.0)
 
 
 def run_simple_session(
@@ -138,14 +93,15 @@ def run_simple_session(
         background_path=runtime.get("background_image_path"),
     )
     copter = Copter(config)
+    sequence = TargetSequence(config)
     logfile_path = _output_path(runtime, participant, profile_name)
     started = datetime.now(timezone.utc)
     started_clock = pygame.time.get_ticks()
     started_monotonic = time.monotonic()
     clock = pygame.time.Clock()
-    completed = timed_out = reset_count = samples = 0
+    completed = timed_out = reset_count = crash_count = samples = 0
     was_reset = False
-    target = _new_target(config, None)
+    target = sequence.next()
     target_started = pygame.time.get_ticks() / 1000.0
     in_zone_s = 0.0
     aborted = False
@@ -157,7 +113,7 @@ def run_simple_session(
     try:
         with logfile_path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-            writer.writerow(("Time[s]", "POSX", "POSY", "REQX", "REQY", "IN_ZONE", "ACTION", "RESET", "ROLL", "THROTTLE"))
+            writer.writerow(("Time[s]", "POSX", "POSY", "REQX", "REQY", "IN_ZONE", "ACTION", "RESET", "ROLL", "THROTTLE", "CRASH"))
             pygame.event.pump()
             while gui.pump() and _active(_axis_value(controller, break_axis)):
                 clock.tick(30)
@@ -194,16 +150,19 @@ def run_simple_session(
                     if not was_reset:
                         reset_count += 1
                 else:
-                    copter.update(dt, throttle, roll * math.radians(90))
+                    if copter.update(dt, throttle, roll * math.radians(90)):
+                        crash_count += 1
+                        if log_callback:
+                            log_callback(f"SimPLE collision at {elapsed_s:.2f} s; waiting for reset.")
                 was_reset = reset_active
                 distance = math.dist(copter.position, target)
-                in_zone = distance <= config.completion_radius_m
+                in_zone = not copter.crashed and distance <= config.completion_radius_m
                 in_zone_s = in_zone_s + dt if in_zone else 0.0
                 action_number = completed + timed_out + 1
                 writer.writerow((
                     f"{elapsed_s:.6f}", f"{copter.position[0]:.6f}", f"{copter.position[1]:.6f}",
                     f"{target[0]:.6f}", f"{target[1]:.6f}", int(in_zone), action_number,
-                    int(reset_active), f"{roll:.6f}", f"{throttle:.6f}",
+                    int(reset_active), f"{roll:.6f}", f"{throttle:.6f}", int(copter.crashed),
                 ))
                 samples += 1
                 if samples % 20 == 0:
@@ -211,16 +170,20 @@ def run_simple_session(
                 gui.update_copter(tuple(copter.position), copter.angle)
                 gui.update_target(target)
                 gui.zone_color("green" if in_zone else "red")
-                gui.update_status(completed, timed_out, reset_count, elapsed_s)
+                gui.update_status(completed, timed_out, reset_count, elapsed_s, crash_count)
+                gui.set_prompt("RELEASE RESET" if reset_active else "CRASH · RESET TO CONTINUE" if copter.crashed else "")
+                if copter.crashed or reset_active:
+                    target_started += dt
+                    continue
                 if in_zone_s >= config.hold_time_s:
                     completed += 1
-                    target = _new_target(config, target)
+                    target = sequence.next(target)
                     target_started = now_ms / 1000.0
                     in_zone_s = 0.0
                     gui.update_target(target)
                 elif now_ms / 1000.0 - target_started >= config.action_timeout_s:
                     timed_out += 1
-                    target = _new_target(config, target)
+                    target = sequence.next(target)
                     target_started = now_ms / 1000.0
                     in_zone_s = 0.0
                     gui.update_target(target)
@@ -238,7 +201,7 @@ def run_simple_session(
         log_callback(f"Compressed SimPLE raw log: {logfile_path}")
     duration = max(0.0, time.monotonic() - started_monotonic)
     if log_callback:
-        log_callback(f"SimPLE finished: completed={completed}, timed out={timed_out}, resets={reset_count}.")
+        log_callback(f"SimPLE finished: completed={completed}, timed out={timed_out}, resets={reset_count}, crashes={crash_count}.")
     return SimpleSessionResult(
         logfile_path=str(logfile_path),
         started_at=started.isoformat(),
@@ -246,6 +209,7 @@ def run_simple_session(
         completed_actions=completed,
         timed_out_actions=timed_out,
         reset_count=reset_count,
+        crash_count=crash_count,
         samples=samples,
         aborted=aborted,
     )
