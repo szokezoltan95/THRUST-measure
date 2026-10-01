@@ -224,7 +224,7 @@ class MainWindow(QMainWindow):
         self.test_combo.setVisible(False)
         self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
 
-        selection_group = QGroupBox("Measurement session")
+        selection_group = QGroupBox("Participant and test")
         selection_group_layout = QVBoxLayout(selection_group)
         selection_group_layout.addWidget(mode_switch)
         selection_form = QFormLayout()
