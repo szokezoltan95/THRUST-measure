@@ -123,6 +123,7 @@ class AdvancedSettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     catalogue_checked = pyqtSignal(object, object, object, object)
     reconnect_checked = pyqtSignal(object, object, object, object)
+    remote_disconnect = pyqtSignal(object)
     led_error = pyqtSignal(str)
 
     def __init__(self) -> None:
@@ -158,6 +159,8 @@ class MainWindow(QMainWindow):
         self._catalogue_connection_ok = False
         self._reconnect_in_flight = False
         self._measurement_active = False
+        self._measurement_lock = threading.Lock()
+        self._remote_disconnect_requested = False
         self._presence_stop_event: threading.Event | None = None
         self._presence_thread: threading.Thread | None = None
         self._presence_participant_id: str | None = None
@@ -451,6 +454,7 @@ class MainWindow(QMainWindow):
         self.joystick_scan_timer.start(1000)
         self.catalogue_checked.connect(self._apply_catalogue_check)
         self.reconnect_checked.connect(self._apply_reconnect_check)
+        self.remote_disconnect.connect(self._apply_remote_disconnect)
         self.catalogue_timer = QTimer(self)
         self.catalogue_timer.timeout.connect(self._check_webdb_catalogue)
         self.catalogue_timer.start(5_000)
@@ -835,6 +839,8 @@ class MainWindow(QMainWindow):
 
     def _connect_webdb(self, *, show_dialog: bool = True) -> None:
         self._auto_reconnect = True
+        with self._measurement_lock:
+            self._remote_disconnect_requested = False
         try:
             self.client = WebDbClient(self.server_edit.text().strip() or DEFAULT_WEBDB_URL)
             self._catalogue_generation += 1
@@ -888,18 +894,31 @@ class MainWindow(QMainWindow):
         self._presence_stop_event = stop_event
 
         def report() -> None:
+            pending_disconnect = False
             try:
                 while not stop_event.is_set():
                     measuring = self._measurement_active
                     try:
-                        client.report_presence(
+                        response = client.report_presence(
                             "measuring" if measuring else "idle",
                             participant_id=self._presence_participant_id if measuring else None,
                             test_definition_id=self._presence_test_definition_id if measuring else None,
                         )
+                        if response.get("status") == "disconnect_pending":
+                            pending_disconnect = True
+                            with self._measurement_lock:
+                                self._remote_disconnect_requested = True
+                        if pending_disconnect:
+                            with self._measurement_lock:
+                                ready_to_disconnect = not self._measurement_active
+                            if ready_to_disconnect:
+                                confirmation = client.report_presence("disconnect_ack")
+                                if confirmation.get("status") == "disconnect":
+                                    self.remote_disconnect.emit(client)
+                                    return
                     except WebDbError:
                         pass
-                    if stop_event.wait(10):
+                    if stop_event.wait(1 if pending_disconnect else 10):
                         break
             finally:
                 try:
@@ -927,7 +946,22 @@ class MainWindow(QMainWindow):
     def _disconnect_webdb(self) -> None:
         self._auto_reconnect = False
         self._activate_offline_mode(show_dialog=False)
+        with self._measurement_lock:
+            self._remote_disconnect_requested = False
         self.append_log("WebDB disconnected. Offline mode is active.")
+
+    def _apply_remote_disconnect(self, client: WebDbClient) -> None:
+        if client is not self.client:
+            return
+        self._auto_reconnect = False
+        self.password_edit.clear()
+        self._activate_offline_mode(show_dialog=False)
+        self.append_log("WebDB session ended by an administrator after the measurement finished.")
+        QMessageBox.information(
+            self, "WebDB session ended",
+            "An administrator disconnected this THRUST-measure session. "
+            "The current measurement has finished. Sign in again to reconnect.",
+        )
 
     def _check_webdb_catalogue(self) -> None:
         if self._measurement_active:
@@ -987,6 +1021,8 @@ class MainWindow(QMainWindow):
             return
         account, tests, participants = result
         self.client = client
+        with self._measurement_lock:
+            self._remote_disconnect_requested = False
         self._catalogue_generation += 1
         self._catalogue_connection_ok = True
         self.offline_mode = False
@@ -1261,6 +1297,10 @@ class MainWindow(QMainWindow):
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
             return
+        with self._measurement_lock:
+            if self._remote_disconnect_requested:
+                return
+            self._measurement_active = True
 
         participant_code = self.participant_combo.currentText().strip() or "LOCAL"
         test = self.current_manifest["test"]
@@ -1283,7 +1323,6 @@ class MainWindow(QMainWindow):
             self._presence_participant_id = str(selected_participant_id) if selected_participant_id else None
             selected_test_id = test.get("id")
             self._presence_test_definition_id = str(selected_test_id) if selected_test_id else None
-            self._measurement_active = True
             self.catalogue_timer.stop()
             runtime = self.common_page.export_common_dict()
             runtime["debug_output"] = True
@@ -1402,7 +1441,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Measurement failed", f"{type(exc).__name__}: {exc}")
         finally:
             if self._measurement_active:
-                self._measurement_active = False
+                with self._measurement_lock:
+                    self._measurement_active = False
                 self._update_run_availability()
                 self._presence_participant_id = None
                 self._presence_test_definition_id = None
