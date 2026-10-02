@@ -5,8 +5,10 @@ from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QPainter, QPalette, QPen
 from PyQt6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QPushButton, QCheckBox, QScrollArea, QVBoxLayout, QWidget,
 )
+from thrust.ui.led_settings_dialog import LedSettingsDialog
+from thrust.tx16smk3_led import LedStyle
 
 
 CHANNELS = ("LX", "LY", "RY", "RX", "BREAK", "RESET")
@@ -45,14 +47,16 @@ class AxisMeter(QWidget):
 
 
 class AxisAssignmentDialog(QDialog):
-    def __init__(self, common_page, mapping: dict[str, int], parent: QWidget) -> None:
+    def __init__(self, common_page, mapping: dict[str, int], parent: QWidget,
+                 led_enabled: bool = False, led_styles: dict[str, LedStyle] | None = None) -> None:
         super().__init__(parent)
         self.common_page = common_page
         self.mapping = dict(mapping)
         self.axis_count = -1
         self.meters: list[AxisMeter] = []
         self.value_labels: list[QLabel] = []
-        self.setWindowTitle("Joystick axis assignment")
+        self.led_styles = dict(led_styles or {})
+        self.setWindowTitle("Configure joystick")
         self.resize(700, 670)
         self.setMinimumWidth(560)
 
@@ -86,6 +90,18 @@ class AxisAssignmentDialog(QDialog):
             assignment_grid.addWidget(label, row, column * 2)
             assignment_grid.addWidget(selector, row, column * 2 + 1)
         root.addWidget(assignment)
+
+        lights = QGroupBox("TX16SMK3 lights · custom EdgeTX firmware")
+        lights_layout = QHBoxLayout(lights)
+        self.lights_enabled = QCheckBox("Enable TX16SMK3 lights")
+        self.lights_enabled.setChecked(led_enabled)
+        configure_lights = QPushButton("Configure lights…")
+        configure_lights.setEnabled(led_enabled)
+        self.lights_enabled.toggled.connect(configure_lights.setEnabled)
+        configure_lights.clicked.connect(self._configure_lights)
+        lights_layout.addWidget(self.lights_enabled)
+        lights_layout.addWidget(configure_lights)
+        root.addWidget(lights)
 
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -160,10 +176,15 @@ class AxisAssignmentDialog(QDialog):
             isinstance(selector.currentData(), int) and 0 <= selector.currentData() < self.axis_count
             for selector in self.selectors.values()
         )
-        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(valid)
+        self.buttons.button(QDialogButtonBox.StandardButton.Save).setEnabled(valid or self.axis_count == 0)
 
     def values(self) -> dict[str, int]:
         return {role: int(selector.currentData()) for role, selector in self.selectors.items()}
+
+    def _configure_lights(self) -> None:
+        dialog = LedSettingsDialog(self.led_styles, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.led_styles = dialog.values()
 
     def stop(self) -> None:
         try:

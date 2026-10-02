@@ -72,7 +72,7 @@ def init_controller(index: int):
     return controller
 
 
-def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionResult:
+def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=None) -> ScopeSessionResult:
     config.validate()
 
     emit_log(config, log_callback, "Validating SCoPE configuration...", debug=True)
@@ -131,6 +131,8 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                 raise RuntimeError("Measurement cancelled before recording.")
 
         emit_log(config, log_callback, "Starting countdown...")
+        if state_callback:
+            state_callback("countdown")
         gui.set_prompt_visible(True)
         for i in range(config.countdown_s, 0, -1):
             gui.set_prompt_text(str(i))
@@ -140,6 +142,8 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                 time.sleep(min(1 / 60, max(0.0, deadline - time.monotonic())))
 
         gui.set_prompt_visible(False)
+        if state_callback:
+            state_callback("out_of_zone")
 
         logfile = open(logfile_path, "w", encoding="utf-8", newline="")
         emit_log(config, log_callback, f"Raw log file opened: {logfile_path}", debug=True)
@@ -239,6 +243,9 @@ def run_scope_session(config: ScopeConfig, log_callback=None) -> ScopeSessionRes
                     inzone_timer = 0
                     in_range = 0
                     gui.updateZoneColor(ok_state=False)
+
+                if state_callback:
+                    state_callback("in_zone" if in_range else "out_of_zone")
 
                 if inzone_timer >= hold_time_frames:
                     action_completed = True

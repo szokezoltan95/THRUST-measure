@@ -12,8 +12,10 @@ def run_simple(
     participant: str,
     profile_name: str,
     log_callback: Callable[[str], None] | None = None,
+    state_callback: Callable[[str], None] | None = None,
 ) -> SimpleSessionResult:
     return run_simple_session(
         config, runtime, participant=participant, profile_name=profile_name,
         log_callback=log_callback,
+        state_callback=state_callback,
     )

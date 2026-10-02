@@ -23,3 +23,6 @@ Thumbs.db
 *.egg-info/
 .release-assets/
 .local-build/
+/build/
+/dist/
+/*.spec

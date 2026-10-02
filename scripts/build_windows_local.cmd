@@ -26,7 +26,7 @@ echo Generated splash image: %CD%\.release-assets\splash.png
 echo Check this PNG if the text looks wrong in the executable.
 echo.
 
-"%BUILD_PYTHON%" -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon "%CD%\THRUST.ico" --splash "%CD%\.release-assets\splash.png" --add-data "%CD%\THRUST.ico;." --add-data "%CD%\profiles;profiles" --collect-data thrust --distpath "%CD%\.local-build\dist" --workpath "%CD%\.local-build\work" --specpath "%CD%\.local-build" "%CD%\main.py"
+"%BUILD_PYTHON%" -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon "%CD%\THRUST.ico" --splash "%CD%\.release-assets\splash.png" --add-data "%CD%\THRUST.ico;." --add-data "%CD%\profiles;profiles" --collect-data thrust --hidden-import matplotlib.backends.backend_pdf --distpath "%CD%\.local-build\dist" --workpath "%CD%\.local-build\work" --specpath "%CD%\.local-build" "%CD%\main.py"
 if errorlevel 1 goto :fail
 
 echo.

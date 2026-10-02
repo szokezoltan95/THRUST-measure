@@ -53,6 +53,7 @@ from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
 from thrust.ui.axis_assignment_dialog import AxisAssignmentDialog
+from thrust.tx16smk3_led import DEFAULTS, LedController, LedStyle, STATES
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 
@@ -122,6 +123,7 @@ class AdvancedSettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     catalogue_checked = pyqtSignal(object, object, object, object)
     reconnect_checked = pyqtSignal(object, object, object, object)
+    led_error = pyqtSignal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -129,6 +131,18 @@ class MainWindow(QMainWindow):
         self.resize(620, 800)
         self.setMinimumSize(500, 700)
         self.settings = QSettings("THRUST", "THRUST-measure")
+        self.led_styles = {}
+        for state in STATES:
+            color, animation = DEFAULTS[state]
+            try:
+                self.led_styles[state] = LedStyle(
+                    str(self.settings.value(f"lights/{state}/color", color)),
+                    str(self.settings.value(f"lights/{state}/animation", animation)),
+                )
+            except ValueError:
+                self.led_styles[state] = LedStyle(color, animation)
+        self.led_controller: LedController | None = None
+        self.led_error.connect(lambda error: self.append_log(f"TX16SMK3 lights: {error}"))
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
         if self.theme_mode not in {"system", "dark", "light"}:
             self.theme_mode = "system"
@@ -309,7 +323,7 @@ class MainWindow(QMainWindow):
             self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
         joystick_layout.addLayout(feedback_grid)
 
-        self.axis_assignment_button = QPushButton("Assign joystick axes…")
+        self.axis_assignment_button = QPushButton("Configure joystick…")
         self.axis_assignment_button.setObjectName("axisAssignmentButton")
         self.axis_assignment_button.setMinimumHeight(38)
         self.axis_assignment_button.clicked.connect(self._open_axis_assignment)
@@ -441,6 +455,26 @@ class MainWindow(QMainWindow):
         self.catalogue_timer.timeout.connect(self._check_webdb_catalogue)
         self.catalogue_timer.start(5_000)
         QTimer.singleShot(0, self._auto_connect_joystick)
+        if self.settings.value("lights/enabled", False, type=bool):
+            self._set_lights_enabled(True)
+
+    def _set_lights_enabled(self, enabled: bool) -> None:
+        if not enabled:
+            if self.led_controller is not None:
+                self.led_controller.stop()
+                self.led_controller = None
+            return
+        if self.led_controller is None:
+            self.led_controller = LedController(self.led_styles, on_error=self.led_error.emit)
+            self.led_controller.start()
+        else:
+            self.led_controller.set_styles(self.led_styles)
+        if not self._measurement_active:
+            self.led_controller.set_state("ready" if self.run_button.isEnabled() else "idle")
+
+    def closeEvent(self, event) -> None:
+        self._set_lights_enabled(False)
+        super().closeEvent(event)
 
     def _open_about(self) -> None:
         dialog = QDialog(self)
@@ -508,13 +542,21 @@ class MainWindow(QMainWindow):
 
     def _open_axis_assignment(self) -> None:
         mapping = {role: spin.value() for role, spin in self._axis_spins.items()}
-        dialog = AxisAssignmentDialog(self.common_page, mapping, self)
+        dialog = AxisAssignmentDialog(self.common_page, mapping, self,
+                                      self.led_controller is not None, self.led_styles)
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
-                for role, axis_index in dialog.values().items():
-                    spin = self._axis_spins[role]
-                    spin.setMaximum(max(spin.maximum(), axis_index))
-                    spin.setValue(axis_index)
+                if dialog.axis_count > 0:
+                    for role, axis_index in dialog.values().items():
+                        spin = self._axis_spins[role]
+                        spin.setMaximum(max(spin.maximum(), axis_index))
+                        spin.setValue(axis_index)
+                self.led_styles = dialog.led_styles
+                for state, style in self.led_styles.items():
+                    self.settings.setValue(f"lights/{state}/color", style.color)
+                    self.settings.setValue(f"lights/{state}/animation", style.animation)
+                self.settings.setValue("lights/enabled", dialog.lights_enabled.isChecked())
+                self._set_lights_enabled(dialog.lights_enabled.isChecked())
                 self._update_joystick_feedback(self.common_page.latest_axis_values)
         finally:
             dialog.stop()
@@ -705,6 +747,8 @@ class MainWindow(QMainWindow):
         test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
         self.run_button.setEnabled(connected and test_ready and participant_ready and
                                    (self.offline_mode or self._catalogue_connection_ok))
+        if self.led_controller is not None and not self._measurement_active:
+            self.led_controller.set_state("ready" if self.run_button.isEnabled() else "idle")
         webdb_ready = not self.offline_mode and self._catalogue_connection_ok
         self._set_status_indicator(
             "webdb", webdb_ready, "WEBDB · CONNECTED", "WEBDB · OFFLINE",
@@ -1263,6 +1307,7 @@ class MainWindow(QMainWindow):
                 session = run_simple(
                     config, runtime, participant=participant_code, profile_name=profile_name,
                     log_callback=self.append_log,
+                    state_callback=self.led_controller.set_state if self.led_controller else None,
                 )
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
                     self.append_log("Measurement cancelled before recording.")
@@ -1291,7 +1336,8 @@ class MainWindow(QMainWindow):
                 self.append_log(
                     f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
                 )
-                session = run_scope(config, log_callback=self.append_log)
+                session = run_scope(config, log_callback=self.append_log,
+                                    state_callback=self.led_controller.set_state if self.led_controller else None)
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
                     self.append_log("Measurement cancelled before recording.")
                     return
@@ -1357,6 +1403,7 @@ class MainWindow(QMainWindow):
         finally:
             if self._measurement_active:
                 self._measurement_active = False
+                self._update_run_availability()
                 self._presence_participant_id = None
                 self._presence_test_definition_id = None
                 # Ignore a catalogue result started just before the session.

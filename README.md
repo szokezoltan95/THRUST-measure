@@ -59,6 +59,12 @@ Download the package for your computer from [Releases](https://github.com/szokez
 
 The installers include the Python runtime and application libraries. You do not need to install Python, Git, or a virtual environment to use them.
 
+### TX16SMK3 LED rings
+
+With the [custom TX16SMK3 EdgeTX firmware](https://github.com/szokezoltan95/edgetx/tree/tx16smk3-pc-led-control), connect the radio in USB joystick mode and open **Configure joystick…**. Enable **TX16SMK3 lights**, then use **Configure lights…** to choose a color and brightness animation for idle, ready, countdown, outside zone, and inside zone. The two rings always show the same color. These settings are saved on this computer, and the feature is off by default. Disabling it or closing THRUST-measure returns LED control to the radio; the firmware also restores its own control after a five-second communication timeout.
+
+You can enable **Create local response graphs after measurement** to save a PDF graph alongside the measurement results.
+
 The Windows and macOS installers are not currently signed. Windows may show a SmartScreen warning, and macOS may ask you to approve the app in System Settings before opening it. Only install a copy obtained from the project's official release page.
 
 ### Windows source installation

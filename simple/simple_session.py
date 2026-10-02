@@ -66,6 +66,7 @@ def run_simple_session(
     participant: str,
     profile_name: str,
     log_callback: Callable[[str], None] | None = None,
+    state_callback: Callable[[str], None] | None = None,
 ) -> SimpleSessionResult:
     config.validate()
     if not pygame.get_init():
@@ -120,6 +121,8 @@ def run_simple_session(
                 pygame.event.pump()
             if not gui.running:
                 aborted = True
+            if state_callback and not aborted:
+                state_callback("countdown")
             for count in range(config.countdown_s, 0, -1):
                 if aborted or not gui.pump():
                     aborted = True
@@ -134,6 +137,8 @@ def run_simple_session(
                 if aborted:
                     break
             gui.set_prompt("")
+            if state_callback and not aborted:
+                state_callback("out_of_zone")
             last_tick = pygame.time.get_ticks()
             while gui.pump() and not _active(_axis_value(controller, break_axis)):
                 dt = clock.tick(100) / 1000.0
@@ -157,6 +162,8 @@ def run_simple_session(
                 was_reset = reset_active
                 distance = math.dist(copter.position, target)
                 in_zone = not copter.crashed and distance <= config.completion_radius_m
+                if state_callback:
+                    state_callback("in_zone" if in_zone else "out_of_zone")
                 in_zone_s = in_zone_s + dt if in_zone else 0.0
                 action_number = completed + timed_out + 1
                 writer.writerow((
