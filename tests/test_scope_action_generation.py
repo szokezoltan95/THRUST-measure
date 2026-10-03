@@ -1,11 +1,22 @@
 import random
 import unittest
 
-from scope.action_generation import DEFAULT_ACTION_SETTINGS, generate_next_target
+from scope.action_generation import DEFAULT_ACTION_SETTINGS, balanced_timing_schedule, generate_next_target
 from scope.scope_config import ScopeConfig
 
 
 class ScopeActionGenerationTests(unittest.TestCase):
+    def test_balanced_timing_schedule_has_exact_midpoint_average_and_seeded_order(self):
+        first = balanced_timing_schedule(20, 3, 5, random.Random(17))
+        second = balanced_timing_schedule(20, 3, 5, random.Random(17))
+        self.assertEqual(first, second)
+        self.assertEqual(sum(first) / len(first), 4.0)
+        self.assertGreater(len(set(first)), 1)
+        self.assertTrue(all(3 <= value <= 5 for value in first))
+
+    def test_one_task_uses_range_midpoint(self):
+        self.assertEqual(balanced_timing_schedule(1, 3, 5, random.Random(2)), [4.0])
+
     def test_limits_changed_axes_relative_to_previous_target(self):
         settings = {
             **DEFAULT_ACTION_SETTINGS,
@@ -87,6 +98,11 @@ class ScopeActionGenerationTests(unittest.TestCase):
         config = ScopeConfig(stick_max=200)
         config.action_settings["intervals"]["LX"] = [-0.005, 0.005]
         with self.assertRaisesRegex(ValueError, "duplicate joystick values"):
+            config.validate()
+
+    def test_version_two_fixed_duration_range_is_limited_to_three_to_five_seconds(self):
+        config = ScopeConfig(timing_version=2, timing_mode="fixed_duration", task_duration_min_s=2.9)
+        with self.assertRaisesRegex(ValueError, "3 to 5 seconds"):
             config.validate()
 
 

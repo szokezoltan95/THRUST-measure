@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,8 +24,18 @@ class ScopeConfig:
     # Accepted when reading older local configuration files; new tests use
     # action_settings instead of named difficulty branches.
     difficulty: str = "hard"
-    action_timeout_s: float = 3.0
-    hold_time_s: float = 0.5
+    action_timeout_s: float = 5.0
+    hold_time_s: float = 1.0
+    # timing_version=1 preserves historic action behavior. Version 2 is the
+    # explicitly configured, fixed-attempt-count SCoPE protocol.
+    timing_version: int = 1
+    timing_mode: str = "original"
+    hold_time_min_s: float = 1.0
+    hold_time_max_s: float = 1.0
+    task_duration_min_s: float = 3.0
+    task_duration_max_s: float = 5.0
+    success_hold_s: float = 1.0
+    independent_zone_colors: bool = False
     fps: int = 100
     stick_max: int = 1000
     deadzone: list[int] = field(default_factory=lambda: [100, 100, 100, 100])
@@ -94,6 +105,26 @@ class ScopeConfig:
             raise ValueError("Hold time must be positive")
         if self.max_completed_actions <= 0:
             raise ValueError("Target completed actions must be positive")
+        if self.timing_version not in (1, 2):
+            raise ValueError("timing_version must be 1 or 2")
+        if self.timing_mode not in ("original", "fixed_duration"):
+            raise ValueError("timing_mode must be original or fixed_duration")
+        for name, low, high in (
+            ("hold time", self.hold_time_min_s, self.hold_time_max_s),
+            ("task duration", self.task_duration_min_s, self.task_duration_max_s),
+        ):
+            if not math.isfinite(low) or not math.isfinite(high) or low <= 0 or low > high:
+                raise ValueError(f"{name} range must satisfy 0 < min <= max")
+        if self.timing_version >= 2 and self.timing_mode == "fixed_duration" and (
+            self.task_duration_min_s < 3 or self.task_duration_max_s > 5
+        ):
+            raise ValueError("Fixed-duration tasks must remain within 3 to 5 seconds")
+        if self.timing_version >= 2 and self.timing_mode == "original" and self.hold_time_max_s > 5:
+            raise ValueError("Original-mode hold time cannot exceed the 5-second task timeout")
+        if not math.isfinite(self.success_hold_s) or self.success_hold_s <= 0 or (self.timing_version >= 2 and self.success_hold_s > 5):
+            raise ValueError("success_hold_s must be positive")
+        if self.timing_version >= 2 and self.timing_mode == "fixed_duration" and self.success_hold_s > self.task_duration_min_s:
+            raise ValueError("Success hold cannot exceed the shortest fixed-duration task")
         if len(self.deadzone) != 4:
             raise ValueError("Deadzone must contain exactly 4 values")
         if any(v < 0 for v in self.deadzone):

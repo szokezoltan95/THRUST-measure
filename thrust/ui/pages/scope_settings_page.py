@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QColorDialog,
+    QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
@@ -28,10 +30,25 @@ class ScopeSettingsPage(QWidget):
         self.load_scope_config(ScopeConfig())
 
     def _build_variables(self) -> None:
+        self.timing_mode_combo = QComboBox()
+        self.timing_mode_combo.addItem("Original: success advances target", "original")
+        self.timing_mode_combo.addItem("Fixed-duration task", "fixed_duration")
+        self.hold_min_spin = self._duration_spin(1.0)
+        self.hold_max_spin = self._duration_spin(1.0)
+        self.duration_min_spin = self._duration_spin(3.0)
+        self.duration_max_spin = self._duration_spin(5.0)
+        self.success_hold_spin = self._duration_spin(1.0)
+        self.hold_min_spin.setMaximum(5.0)
+        self.hold_max_spin.setMaximum(5.0)
+        self.duration_min_spin.setRange(3.0, 5.0)
+        self.duration_max_spin.setRange(3.0, 5.0)
+        self.success_hold_spin.setMaximum(5.0)
+        self.independent_zone_colors_check = QCheckBox("Color each gimbal zone independently")
+        self.timing_mode_combo.currentIndexChanged.connect(self._sync_timing_controls)
         self.timeout_spin = QDoubleSpinBox()
         self.timeout_spin.setRange(0.1, 60.0)
         self.timeout_spin.setDecimals(2)
-        self.timeout_spin.setValue(3.0)
+        self.timeout_spin.setValue(5.0)
         self.timeout_spin.setMaximumWidth(110)
 
         self.fps_spin = QSpinBox()
@@ -128,9 +145,13 @@ class ScopeSettingsPage(QWidget):
         basic_layout = QGridLayout(basic)
         task_group = QGroupBox("Test parameters")
         task_form = QFormLayout(task_group)
+        task_form.addRow("Timing mode:", self.timing_mode_combo)
+        task_form.addRow("Original hold minimum [s]:", self.hold_min_spin)
+        task_form.addRow("Original hold maximum [s]:", self.hold_max_spin)
+        task_form.addRow("Fixed task minimum [s]:", self.duration_min_spin)
+        task_form.addRow("Fixed task maximum [s]:", self.duration_max_spin)
+        task_form.addRow("Success hold [s]:", self.success_hold_spin)
         task_form.addRow("Sampling frequency [Hz]:", self.fps_spin)
-        task_form.addRow("Action timeout [s]:", self.timeout_spin)
-        task_form.addRow("Hold time [s]:", self.hold_time_spin)
         task_form.addRow("Stick max:", self.stick_max_spin)
         task_form.addRow("Completed actions:", self.max_actions_spin)
         task_form.addRow("Countdown [s]:", self.countdown_spin)
@@ -175,6 +196,7 @@ class ScopeSettingsPage(QWidget):
         colors_layout = QGridLayout(colors)
         color_group = QGroupBox("Colors")
         color_grid = QGridLayout(color_group)
+        color_grid.addWidget(self.independent_zone_colors_check, 0, 0, 1, 2)
         labels = [
             ("screen_background", "Screen background"),
             ("gimbal_background", "Gimbal background"),
@@ -202,6 +224,23 @@ class ScopeSettingsPage(QWidget):
         self.tabs.addTab(actions, "Actions")
         self.tabs.addTab(colors, "Colors")
 
+    @staticmethod
+    def _duration_spin(value: float) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0.1, 60.0)
+        spin.setDecimals(2)
+        spin.setSingleStep(0.1)
+        spin.setValue(value)
+        spin.setMaximumWidth(110)
+        return spin
+
+    def _sync_timing_controls(self) -> None:
+        original = self.timing_mode_combo.currentData() == "original"
+        for control in (self.hold_min_spin, self.hold_max_spin):
+            control.setEnabled(original)
+        for control in (self.duration_min_spin, self.duration_max_spin, self.success_hold_spin):
+            control.setEnabled(not original)
+
     def _pick_color(self, key: str) -> None:
         color = QColorDialog.getColor(options=QColorDialog.ColorDialogOption.DontUseNativeDialog)
         if color.isValid():
@@ -226,8 +265,16 @@ class ScopeSettingsPage(QWidget):
         common_data = common.export_common_dict()
         return ScopeConfig(
             user=common_data["user"],
-            action_timeout_s=self.timeout_spin.value(),
-            hold_time_s=self.hold_time_spin.value(),
+            timing_version=2,
+            timing_mode=str(self.timing_mode_combo.currentData()),
+            hold_time_min_s=self.hold_min_spin.value(),
+            hold_time_max_s=self.hold_max_spin.value(),
+            task_duration_min_s=self.duration_min_spin.value(),
+            task_duration_max_s=self.duration_max_spin.value(),
+            success_hold_s=self.success_hold_spin.value(),
+            independent_zone_colors=self.independent_zone_colors_check.isChecked(),
+            action_timeout_s=5.0,
+            hold_time_s=1.0,
             fps=self.fps_spin.value(),
             stick_max=self.stick_max_spin.value(),
             deadzone=common_data.get("deadzone", [100, 100, 100, 100]),
@@ -276,6 +323,15 @@ class ScopeSettingsPage(QWidget):
         )
 
     def load_scope_config(self, cfg: ScopeConfig) -> None:
+        mode_index = self.timing_mode_combo.findData(cfg.timing_mode)
+        self.timing_mode_combo.setCurrentIndex(max(0, mode_index))
+        self.hold_min_spin.setValue(cfg.hold_time_min_s)
+        self.hold_max_spin.setValue(cfg.hold_time_max_s)
+        self.duration_min_spin.setValue(cfg.task_duration_min_s)
+        self.duration_max_spin.setValue(cfg.task_duration_max_s)
+        self.success_hold_spin.setValue(cfg.success_hold_s)
+        self.independent_zone_colors_check.setChecked(cfg.independent_zone_colors)
+        self._sync_timing_controls()
         self.timeout_spin.setValue(cfg.action_timeout_s)
         self.fps_spin.setValue(cfg.fps)
         self.hold_time_spin.setValue(cfg.hold_time_s)

@@ -43,6 +43,8 @@ class SCoPE_GUI:
         self.targets = [0, 0, 0, 0]
         self.sticks = [0, 0, 0, 0]
         self.zone_ok = False
+        self.gimbal_zone_ok = [False, False]
+        self.independent_zone_colors = False
         self._font = pygame.font.SysFont("Segoe UI", 22)
         self._small_font = pygame.font.SysFont("Segoe UI", 17)
         self._large_font = pygame.font.SysFont("Segoe UI", 72, bold=True)
@@ -58,10 +60,10 @@ class SCoPE_GUI:
         left_x = int(width / 2 - size - gap / 2)
         right_x = int(width / 2 + gap / 2)
         scale = size / (2 * self.stick_max)
-        for origin_x, target_x, target_y, stick_x, stick_y in (
+        for gimbal_index, (origin_x, target_x, target_y, stick_x, stick_y) in enumerate((
             (left_x, self.targets[0], self.targets[1], self.sticks[0], self.sticks[1]),
             (right_x, self.targets[3], self.targets[2], self.sticks[3], self.sticks[2]),
-        ):
+        )):
             rect = pygame.Rect(origin_x, y, size, size)
             pygame.draw.rect(self.screen, self.colors["gimbal"], rect)
             self._draw_gimbal_guides(rect)
@@ -69,8 +71,9 @@ class SCoPE_GUI:
             zx = cx + target_x * scale
             zy = cy - target_y * scale
             zw = self.stick_zone * scale * 2
-            zone_color = self.colors["zone_ok_fill"] if self.zone_ok else self.colors["zone_idle_fill"]
-            zone_outline = self.colors["zone_ok"] if self.zone_ok else self.colors["zone_idle"]
+            zone_ok = self.gimbal_zone_ok[gimbal_index] if self.independent_zone_colors else self.zone_ok
+            zone_color = self.colors["zone_ok_fill"] if zone_ok else self.colors["zone_idle_fill"]
+            zone_outline = self.colors["zone_ok"] if zone_ok else self.colors["zone_idle"]
             zone = pygame.Rect(int(zx - zw / 2), int(zy - zw / 2), int(zw), int(zw))
             previous_clip = self.screen.get_clip()
             self.screen.set_clip(rect)
@@ -160,5 +163,8 @@ class SCoPE_GUI:
     def updateStickPosition(self, stick_posxy):
         self.sticks = list(stick_posxy[:4])
 
-    def updateZoneColor(self, zone_color=None, ok_state=False):
+    def updateZoneColor(self, zone_color=None, ok_state=False, gimbal_states=None, independent=False):
         self.zone_ok = bool(ok_state or zone_color == self.colors["zone_ok"])
+        if gimbal_states is not None:
+            self.gimbal_zone_ok = [bool(value) for value in gimbal_states[:2]]
+        self.independent_zone_colors = bool(independent)

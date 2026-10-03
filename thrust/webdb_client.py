@@ -80,7 +80,7 @@ class WebDbClient:
     def get_test_configuration(self, test_id: str) -> dict[str, Any]:
         prefix = "/api/student/tests" if self.role == "student" else "/api/admin/tests"
         manifest = self._request_json(f"{prefix}/{test_id}/configuration")
-        if manifest.get("schema_version") != "test-configuration-v1":
+        if manifest.get("schema_version") not in ("test-configuration-v1", "test-configuration-v2"):
             raise WebDbError("Unsupported test configuration schema.")
         if not isinstance(manifest.get("test"), dict):
             raise WebDbError("The test manifest is missing its test definition.")

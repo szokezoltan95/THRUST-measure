@@ -7,6 +7,7 @@ from typing import Any
 
 AXES = ("LX", "LY", "RY", "RX")
 GIMBALS = ((0, 1), (2, 3))
+TIMING_SCHEDULE_VERSION = 1
 DEFAULT_ACTION_SETTINGS: dict[str, Any] = {
     "generator_version": 1,
     "intervals": {axis: [-0.8, 0.8] for axis in AXES},
@@ -15,6 +16,23 @@ DEFAULT_ACTION_SETTINGS: dict[str, Any] = {
     "max_changed_axes": 2,
     "single_gimbal_probability": 0.5,
 }
+
+
+def balanced_timing_schedule(count: int, low_s: float, high_s: float, rng: random.Random) -> list[float]:
+    """Return a shuffled, stratified schedule spanning the configured range.
+
+    Stratification keeps the mean close to the range midpoint and distributes
+    durations evenly; shuffling prevents a predictable short-to-long sequence.
+    The complete schedule has an exact midpoint mean; a one-task schedule uses
+    that midpoint. Equal bounds remain deterministic.
+    """
+    if count <= 0 or not math.isfinite(low_s) or not math.isfinite(high_s) or low_s <= 0 or low_s > high_s:
+        raise ValueError("Timing schedule requires count > 0 and 0 < min <= max")
+    if low_s == high_s:
+        return [float(low_s)] * count
+    values = [low_s + (high_s - low_s) * ((index + 0.5) / count) for index in range(count)]
+    rng.shuffle(values)
+    return values
 
 
 def _quantize(normalized_value: float, stick_max: int) -> int:

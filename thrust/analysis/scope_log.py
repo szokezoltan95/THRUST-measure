@@ -16,7 +16,11 @@ from typing import Any
 from thrust.analysis.response_metrics import estimate_response_onset, normalized_step_metrics
 
 REQUIRED_COLUMNS = {"TIME", "LX", "LY", "RY", "RX", "LXRQ", "LYRQ", "RYRQ", "RXRQ"}
-OPTIONAL_COLUMNS = {"ACTION_ID", "IN_RANGE", "LEVR", "BUTT", "SIDL", "SIDR"}
+OPTIONAL_COLUMNS = {
+    "ACTION_ID", "IN_RANGE", "LEVR", "BUTT", "SIDL", "SIDR",
+    "LEFT_IN_ZONE", "RIGHT_IN_ZONE", "LEFT_SUCCESS", "RIGHT_SUCCESS",
+    "TASK_SUCCESS", "TASK_LIMIT_S", "HOLD_REQUIRED_S", "TASK_ELAPSED_S", "TASK_RESULT",
+}
 LEGACY_COLUMN_NAMES = {
     "AILE": "LX", "ELEV": "LY", "THRO": "RY", "RUDD": "RX",
     "AREQ": "LXRQ", "EREQ": "LYRQ", "TREQ": "RYRQ", "RREQ": "RXRQ",
@@ -291,6 +295,16 @@ def _action_events(rows: list[dict[str, float]]) -> list[dict[str, Any]]:
             "duration_s": segment[-1]["TIME"] - first["TIME"],
             "request": {key: first[key] for key in REQUEST_COLUMNS},
             "in_zone_fraction": sum(in_zone) / len(in_zone) if in_zone else 0.0,
+            "left_in_zone_fraction": sum(row.get("LEFT_IN_ZONE", 0.0) for row in segment) / len(segment),
+            "right_in_zone_fraction": sum(row.get("RIGHT_IN_ZONE", 0.0) for row in segment) / len(segment),
+            "left_success": bool(max((row.get("LEFT_SUCCESS", 0.0) for row in segment), default=0.0)),
+            "right_success": bool(max((row.get("RIGHT_SUCCESS", 0.0) for row in segment), default=0.0)),
+            "success": bool(max((row.get("TASK_SUCCESS", 0.0) for row in segment), default=0.0)),
+            "task_limit_s": first.get("TASK_LIMIT_S"),
+            "hold_required_s": first.get("HOLD_REQUIRED_S"),
+            "task_elapsed_s": segment[-1].get("TASK_ELAPSED_S"),
+            "result_code": int(segment[-1].get("TASK_RESULT", 0.0)),
+            "interrupted": int(segment[-1].get("TASK_RESULT", 0.0)) == 3,
         })
         begin = end
     return events

@@ -1398,6 +1398,10 @@ class MainWindow(QMainWindow):
                 session_summary={
                     "completed": getattr(session, "total_completed", 0),
                     "mistakes": getattr(session, "total_mistakes", 0),
+                    "attempts": getattr(session, "total_attempts", 0),
+                    "timing_schedule_s": getattr(session, "timing_schedule_s", None),
+                    "timing_seed": getattr(session, "timing_seed", None),
+                    "timing_schedule_version": getattr(session, "timing_schedule_version", 1),
                     "crashes": getattr(session, "crash_count", 0),
                     "aborted": getattr(session, "aborted", False),
                     "abort_reason": getattr(session, "abort_reason", ""),
@@ -1429,6 +1433,7 @@ class MainWindow(QMainWindow):
                 started_at=analysis.get("started_at") or datetime.now(timezone.utc).isoformat(),
                 raw_log_path=raw_path,
                 analysis_data=analysis,
+                status="incomplete" if getattr(session, "aborted", False) else "recorded",
             )
             self.append_log(
                 f"Measurement uploaded: {uploaded.get('id', 'unknown')} "
