@@ -200,7 +200,8 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
         emit_log(config, log_callback, f"New target requested: {action_request}", debug=True)
 
         gui.updateStickZones(action_request)
-        gui.set_action_text("Action: " + str(action_request))
+        action_label = "Track until target changes · " if config.timing_version >= 2 and config.timing_mode == "fixed_duration" else ""
+        gui.set_action_text(action_label + "Action: " + str(action_request))
         gui.set_counter_text(f"Tasks: 0/{config.max_completed_actions}    Success: 0    Missed: 0")
 
         clk = pygame.time.Clock()
@@ -273,7 +274,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
                 full_since_ns[0] = left_since_ns = right_since_ns = None
                 gui.updateZoneColor(ok_state=False, gimbal_states=(False, False))
                 gui.updateStickZones(action_request)
-                gui.set_action_text("Action: " + str(action_request))
+                gui.set_action_text(action_label + "Action: " + str(action_request))
                 action_start = sample_time
                 current_action_id += 1
                 current_task_index = total_attempts
