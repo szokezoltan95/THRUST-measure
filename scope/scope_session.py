@@ -338,13 +338,13 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
 
             gui.updateStickPosition(gui.calculateStickPosition(mapped))
 
+            if (total_attempts >= config.max_completed_actions if config.timing_version >= 2 else total_completed >= config.max_completed_actions):
+                break
+
             if 0 <= config.break_axis < axes and controller.get_axis(config.break_axis) > 0:
                 aborted = True
                 abort_reason = f"Session aborted by break axis {config.break_axis}."
                 emit_log(config, log_callback, "Session aborted by user.")
-                break
-
-            if (total_attempts >= config.max_completed_actions if config.timing_version >= 2 else total_completed >= config.max_completed_actions):
                 break
 
         session_task_quota_met = (
