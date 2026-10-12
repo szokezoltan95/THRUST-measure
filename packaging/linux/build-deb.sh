@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-version=1.1.0
+version=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
 arch=amd64
 root="build/deb/thrust-measure_${version}_${arch}"
 mkdir -p "$root/DEBIAN" "$root/opt/thrust-measure" "$root/usr/share/applications" "$root/usr/share/icons/hicolor/256x256/apps" release
