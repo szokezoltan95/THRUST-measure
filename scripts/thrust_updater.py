@@ -52,16 +52,18 @@ def safe_extract(archive: Path, destination: Path) -> Path:
 
 def overlay(source: Path, target: Path) -> None:
     updater_names = {"THRUST-updater", "THRUST-updater.exe"}
-    for current, directories, files in os.walk(source):
-        relative = Path(current).relative_to(source)
-        target_dir = target / relative
-        target_dir.mkdir(parents=True, exist_ok=True)
-        directories[:] = [name for name in directories if name not in updater_names]
-        for name in files:
-            if name in updater_names:
-                continue
-            shutil.copy2(Path(current) / name, target_dir / name)
 
+    def ignore_running_updater(_directory: str, names: list[str]) -> set[str]:
+        return updater_names.intersection(names)
+
+    # Preserve symlinks within macOS bundles and Linux PyInstaller builds.
+    shutil.copytree(
+        source,
+        target,
+        dirs_exist_ok=True,
+        symlinks=True,
+        ignore=ignore_running_updater,
+    )
 
 def restart(target: Path) -> None:
     if sys.platform == "darwin":
