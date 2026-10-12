@@ -21,4 +21,5 @@ Description: THRUST UAV pilot measurement client
  Bundled Python, PyQt6, Pygame, and measurement modules.
 EOF
 chmod 755 "$root/opt/thrust-measure/THRUST-measure"
+chmod 755 "$root/opt/thrust-measure/THRUST-updater"
 dpkg-deb --build --root-owner-group "$root" "release/THRUST-measure-${version}-linux-${arch}.deb"
