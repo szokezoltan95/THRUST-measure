@@ -31,7 +31,14 @@ def safe_extract(archive: Path, destination: Path) -> Path:
                 target = (destination / item.filename).resolve()
                 if destination.resolve() not in target.parents and target != destination.resolve():
                     raise RuntimeError("The update package contains an unsafe path.")
-            package.extractall(destination)
+            if sys.platform == "darwin":
+                # ditto preserves app-bundle symlinks and metadata from the release ZIP.
+                subprocess.run(
+                    ["ditto", "-x", "-k", str(archive), str(destination)],
+                    check=True,
+                )
+            else:
+                package.extractall(destination)
     else:
         with tarfile.open(archive, "r:gz") as package:
             for item in package.getmembers():
