@@ -1,11 +1,11 @@
 name: Build and release THRUST-measure
 on:
   push:
+    branches:
+      - "release/v*"
     tags:
       - "v*"
   workflow_dispatch:
-  release:
-    types: [published]
 permissions:
   contents: read
 jobs:
@@ -22,6 +22,10 @@ jobs:
           VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match project version $VERSION" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" != "release/v$VERSION" ]]; then
+            echo "Release branch $GITHUB_REF_NAME does not match project version $VERSION" >&2
             exit 1
           fi
       - run: QT_QPA_PLATFORM=offscreen SDL_VIDEODRIVER=dummy python -m pytest -q
@@ -108,7 +112,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
