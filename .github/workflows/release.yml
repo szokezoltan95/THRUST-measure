@@ -1,5 +1,8 @@
 name: Build and release THRUST-measure
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - "release/v*"
