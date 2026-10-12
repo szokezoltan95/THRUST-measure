@@ -1,4 +1,6 @@
-#define AppVersion "1.1.0"
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
 [Setup]
 AppId={{6B38A7E6-6633-4281-8596-78F8A60A275A}
 AppName=THRUST-measure
@@ -13,7 +15,7 @@ LicenseFile=..\..\EULA.txt
 SetupIconFile=..\..\THRUST.ico
 UninstallDisplayIcon={app}\THRUST-measure.exe
 OutputDir=..\..\release
-OutputBaseFilename=THRUST-measure-1.1.0-windows-x64-setup
+OutputBaseFilename=THRUST-measure-{#AppVersion}-windows-x64-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
