@@ -501,6 +501,7 @@ class MainWindow(QMainWindow):
         worker = UpdateWorker(operation, update, self)
         worker.result_ready.connect(lambda result: self._handle_update_result(result, manual))
         worker.finished.connect(lambda: self._update_worker_finished(worker))
+        worker.finished.connect(worker.deleteLater)
         self._update_worker = worker
         worker.start()
 
@@ -510,7 +511,8 @@ class MainWindow(QMainWindow):
 
     def _handle_update_result(self, result: dict[str, Any], manual: bool) -> None:
         self.update_button.setEnabled(True)
-        self.settings.setValue("updates/last_check", datetime.now(timezone.utc).timestamp())
+        if result.get("operation") == "check" and result.get("ok"):
+            self.settings.setValue("updates/last_check", datetime.now(timezone.utc).timestamp())
         if not result.get("ok"):
             self.update_button.setText("Updates")
             self.update_button.setToolTip("Could not check or download updates")
