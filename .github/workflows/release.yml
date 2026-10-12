@@ -27,7 +27,7 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match project version $VERSION" >&2
             exit 1
           fi
-          if [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" != "release/v$VERSION" ]]; then
+          if [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" == release/v* && "$GITHUB_REF_NAME" != "release/v$VERSION" ]]; then
             echo "Release branch $GITHUB_REF_NAME does not match project version $VERSION" >&2
             exit 1
           fi
