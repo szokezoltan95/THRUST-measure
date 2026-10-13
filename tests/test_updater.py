@@ -62,7 +62,7 @@ def test_windows_wait_for_process_uses_native_wait(monkeypatch):
         CloseHandle=Mock(return_value=True),
     )
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(ctypes, "WinDLL", lambda *_args, **_kwargs: kernel, raising=False)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *_args, **_kwargs: kernel32, raising=False)
     monkeypatch.setattr(os, "kill", lambda *_args: pytest.fail("os.kill must not be used on Windows"))
 
     thrust_updater.wait_for_process(5678)
