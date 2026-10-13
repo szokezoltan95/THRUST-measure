@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.4
+
+### In-app updates
+- About now shows the installed version and clearly states the update path, for example **1.2.3 → 1.2.4**.
+- Update release notes from GitHub are shown before installation, with a separate button to apply the update.
+- Published this as a stable update so existing 1.2.3 installations can discover and install the updater improvements. The previous updater could only check stable releases and could not parse prerelease version tags.
+
 ## 1.2.3b
 
 ### In-app update test build
