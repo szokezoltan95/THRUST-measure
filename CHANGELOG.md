@@ -2,6 +2,8 @@
 
 ## 1.2.3b
 
+> This prerelease is intended to test the in-app update flow and is not a stable production release.
+
 ### In-app update test build
 - Added the installed application version and a clear source-to-target version status to the About window.
 - Renamed the update action to **Check for updates** and added a separate install button so the release notes can be reviewed first.
