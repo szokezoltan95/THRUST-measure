@@ -56,6 +56,7 @@ from thrust.ui.axis_assignment_dialog import AxisAssignmentDialog
 from thrust.tx16smk3_led import DEFAULTS, LedController, LedStyle, STATES
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
+from thrust.updater import UpdateWorker
 
 
 class LoginDialog(QDialog):
@@ -132,6 +133,8 @@ class MainWindow(QMainWindow):
         self.resize(620, 800)
         self.setMinimumSize(500, 700)
         self.settings = QSettings("THRUST", "THRUST-measure")
+        self._update_worker: UpdateWorker | None = None
+        self._available_update: dict[str, Any] | None = None
         self.led_styles = {}
         for state in STATES:
             color, animation = DEFAULTS[state]
@@ -409,6 +412,10 @@ class MainWindow(QMainWindow):
         self.about_button.setToolTip("Copyright and open-source license")
         self.about_button.clicked.connect(self._open_about)
         title_row.addWidget(self.about_button)
+        self.update_button = QPushButton("Updates")
+        self.update_button.setToolTip("Check for THRUST-measure updates")
+        self.update_button.clicked.connect(self._update_button_clicked)
+        title_row.addWidget(self.update_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -461,6 +468,101 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._auto_connect_joystick)
         if self.settings.value("lights/enabled", False, type=bool):
             self._set_lights_enabled(True)
+        last_update_check = float(self.settings.value("updates/last_check", 0))
+        if datetime.now(timezone.utc).timestamp() - last_update_check >= 86_400:
+            QTimer.singleShot(5_000, lambda: self._check_for_updates(manual=False))
+
+    def _update_button_clicked(self) -> None:
+        if self._available_update is None:
+            self._check_for_updates(manual=True)
+            return
+        update = self._available_update
+        answer = QMessageBox.question(
+            self,
+            "Update THRUST-measure",
+            f"Download and install version {update['version']} now? The app will close and reopen after the update.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._start_update_worker("download", update)
+
+    def _check_for_updates(self, manual: bool) -> None:
+        if self._update_worker is not None and self._update_worker.isRunning():
+            return
+        self.update_button.setEnabled(False)
+        self.update_button.setText("Checking…")
+        self._start_update_worker("check", manual=manual)
+
+    def _start_update_worker(self, operation: str, update: dict[str, Any] | None = None, manual: bool = False) -> None:
+        if operation == "download":
+            self.update_button.setEnabled(False)
+            self.update_button.setText("Downloading…")
+        worker = UpdateWorker(operation, update, self)
+        worker.result_ready.connect(lambda result: self._handle_update_result(result, manual))
+        worker.finished.connect(lambda: self._update_worker_finished(worker))
+        worker.finished.connect(worker.deleteLater)
+        self._update_worker = worker
+        worker.start()
+
+    def _update_worker_finished(self, worker: UpdateWorker) -> None:
+        if self._update_worker is worker:
+            self._update_worker = None
+
+    def _handle_update_result(self, result: dict[str, Any], manual: bool) -> None:
+        self.update_button.setEnabled(True)
+        if result.get("operation") == "check" and result.get("ok"):
+            self.settings.setValue("updates/last_check", datetime.now(timezone.utc).timestamp())
+        if not result.get("ok"):
+            self.update_button.setText("Updates")
+            self.update_button.setToolTip("Could not check or download updates")
+            if manual or result.get("operation") == "download":
+                QMessageBox.warning(self, "THRUST-measure update", str(result.get("error", "Update failed.")))
+            return
+        if result.get("operation") == "check":
+            self._available_update = result.get("update")
+            if self._available_update is None:
+                self.update_button.setText("Updates")
+                self.update_button.setToolTip("THRUST-measure is up to date")
+                if manual:
+                    QMessageBox.information(self, "THRUST-measure update", "You already have the latest version.")
+            else:
+                version = self._available_update["version"]
+                self.update_button.setText(f"Update {version}")
+                self.update_button.setToolTip(f"Version {version} is available. Click to update.")
+                if manual:
+                    QMessageBox.information(self, "THRUST-measure update", f"Version {version} is available.")
+            return
+        if result.get("operation") == "download":
+            try:
+                self._launch_update_helper(Path(result["path"]))
+            except Exception as exc:
+                QMessageBox.warning(self, "THRUST-measure update", str(exc))
+                self.update_button.setText("Updates")
+
+    def _launch_update_helper(self, archive: Path) -> None:
+        executable = Path(sys.executable).resolve()
+        if sys.platform == "darwin":
+            app_bundle = next((parent for parent in executable.parents if parent.suffix == ".app"), None)
+            if app_bundle is None:
+                raise RuntimeError("Could not locate the THRUST-measure application bundle.")
+            target = app_bundle
+            helper = app_bundle / "Contents" / "MacOS" / "THRUST-updater"
+        else:
+            target = executable.parent
+            helper_name = "THRUST-updater.exe" if sys.platform == "win32" else "THRUST-updater"
+            helper = target / helper_name
+        if not helper.is_file():
+            raise RuntimeError("The built-in update helper is missing. Reinstall this version before updating.")
+        import subprocess
+        subprocess.Popen(
+            [str(helper), str(archive), str(target), str(os.getpid())],
+            cwd=str(target),
+            start_new_session=True,
+        )
+        self.update_button.setEnabled(False)
+        self.update_button.setText("Installing…")
+        QTimer.singleShot(500, QApplication.quit)
 
     def _set_lights_enabled(self, enabled: bool) -> None:
         if not enabled:
