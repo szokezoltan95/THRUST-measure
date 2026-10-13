@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thrust-measurement"
-version = "1.2.2"
+version = "1.2.3"
 description = "THRUST UAV pilot measurement launcher"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,4 +30,5 @@ namespaces = false
 
 [tool.setuptools.package-data]
 thrust = ["assets/*", "ui/*.svg", "ui/*.txt"]
+
 
