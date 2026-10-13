@@ -165,15 +165,20 @@ jobs:
             found && /^## / { exit }
             found { print }
           ' CHANGELOG.md > "$NOTES_FILE"
+          PRERELEASE_FLAG=()
+          if [[ "$VERSION" =~ [a-zA-Z] ]]; then
+            PRERELEASE_FLAG=(--prerelease)
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release delete-asset "$TAG" "THRUST-measure--linux-amd64.tar.gz" --repo "$GITHUB_REPOSITORY" --yes >/dev/null 2>&1 || true
             gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
             if [[ -s "$NOTES_FILE" ]]; then
-              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE"
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE" "${PRERELEASE_FLAG[@]}"
             fi
           elif [[ -s "$NOTES_FILE" ]]; then
-            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE"
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE" "${PRERELEASE_FLAG[@]}"
           else
-            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --generate-notes
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --generate-notes "${PRERELEASE_FLAG[@]}"
           fi
+
 
