@@ -1,3 +1,4 @@
+import json
 import ctypes
 import os
 import sys
@@ -8,7 +9,13 @@ import pytest
 
 from scripts import thrust_updater
 
-from thrust.updater import expected_asset_suffix, find_update_asset, is_newer_version
+from thrust.updater import (
+    check_latest_release,
+    display_version,
+    expected_asset_suffix,
+    find_update_asset,
+    is_newer_version,
+)
 
 
 @pytest.mark.parametrize(
@@ -86,3 +93,43 @@ def test_windows_wait_for_process_returns_if_app_already_exited(monkeypatch):
 
     kernel32.WaitForSingleObject.assert_not_called()
     kernel32.CloseHandle.assert_not_called()
+
+
+
+def test_update_test_build_sorts_after_current_release():
+    assert is_newer_version("1.2.3b", "1.2.3")
+    assert not is_newer_version("1.2.3b0", "1.2.3b")
+    assert is_newer_version("1.2.4", "1.2.3b")
+    assert display_version("1.2.3b0") == "1.2.3b"
+
+
+def test_check_latest_release_includes_prerelease_notes(monkeypatch):
+    release = {
+        "draft": False,
+        "tag_name": "v1.2.3b",
+        "html_url": "https://github.com/example/repo/releases/tag/v1.2.3b",
+        "body": "### In-app update test build\n- Shows release notes.",
+        "assets": [{
+            "name": "THRUST-measure-1.2.3b-windows-x64.zip",
+            "browser_download_url": "https://example.test/update.zip",
+            "digest": "sha256:" + "a" * 64,
+        }],
+    }
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps([release]).encode()
+
+    monkeypatch.setattr("thrust.updater.urllib.request.urlopen", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr("thrust.updater.expected_asset_suffix", lambda: "-windows-x64.zip")
+
+    update = check_latest_release("1.2.3")
+
+    assert update["version"] == "1.2.3b"
+    assert update["body"] == release["body"]
