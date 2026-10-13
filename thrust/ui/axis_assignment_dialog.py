@@ -11,7 +11,7 @@ from thrust.ui.led_settings_dialog import LedSettingsDialog
 from thrust.tx16smk3_led import LedStyle
 
 
-CHANNELS = ("LX", "LY", "RY", "RX", "BREAK", "RESET")
+CHANNELS = ("LX", "LY", "RX", "RY", "BREAK", "RESET")
 
 
 class AxisMeter(QWidget):
@@ -195,3 +195,4 @@ class AxisAssignmentDialog(QDialog):
     def closeEvent(self, event) -> None:
         self.stop()
         super().closeEvent(event)
+

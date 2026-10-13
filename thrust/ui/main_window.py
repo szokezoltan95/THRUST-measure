@@ -57,6 +57,7 @@ from thrust.tx16smk3_led import DEFAULTS, LedController, LedStyle, STATES
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 from thrust.updater import UpdateWorker
+from thrust.joystick_profiles import joystick_profile_key
 
 
 class LoginDialog(QDialog):
@@ -135,6 +136,7 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("THRUST", "THRUST-measure")
         self._update_worker: UpdateWorker | None = None
         self._available_update: dict[str, Any] | None = None
+        self.about_dialog: QDialog | None = None
         self.led_styles = {}
         for state in STATES:
             color, animation = DEFAULTS[state]
@@ -289,12 +291,12 @@ class MainWindow(QMainWindow):
         self._axis_spins = {
             "LX": self.common_page.lx_axis_spin,
             "LY": self.common_page.ly_axis_spin,
-            "RY": self.common_page.ry_axis_spin,
             "RX": self.common_page.rx_axis_spin,
+            "RY": self.common_page.ry_axis_spin,
             "BREAK": self.common_page.break_axis_spin,
             "RESET": self.common_page.reset_axis_spin,
         }
-        for row, name in enumerate(("LX", "LY", "RY", "RX", "BREAK", "RESET")):
+        for row, name in enumerate(("LX", "LY", "RX", "RY", "BREAK", "RESET")):
             axis_row = QWidget()
             axis_row_layout = QHBoxLayout(axis_row)
             axis_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -415,7 +417,6 @@ class MainWindow(QMainWindow):
         self.update_button = QPushButton("Updates")
         self.update_button.setToolTip("Check for THRUST-measure updates")
         self.update_button.clicked.connect(self._update_button_clicked)
-        title_row.addWidget(self.update_button)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -583,23 +584,31 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _open_about(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("About THRUST-measure")
-        dialog.setMinimumWidth(560)
-        layout = QVBoxLayout(dialog)
-        heading = QLabel("THRUST-measure · SCoPE · SimPLE")
-        heading.setObjectName("appTitle")
-        layout.addWidget(heading)
-        layout.addWidget(QLabel("Copyright © 2026 Zoltán Szőke · MIT License"))
-        license_text = QPlainTextEdit()
-        license_text.setReadOnly(True)
-        license_text.setPlainText(Path(__file__).with_name("LICENSE.txt").read_text(encoding="utf-8"))
-        license_text.setMinimumHeight(320)
-        layout.addWidget(license_text)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        dialog.exec()
+        if self.about_dialog is None:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("About THRUST-measure")
+            dialog.setMinimumWidth(560)
+            layout = QVBoxLayout(dialog)
+            heading = QLabel("THRUST-measure · SCoPE · SimPLE")
+            heading.setObjectName("appTitle")
+            layout.addWidget(heading)
+            layout.addWidget(QLabel("Copyright © 2026 Zoltán Szőke · MIT License"))
+            license_text = QPlainTextEdit()
+            license_text.setReadOnly(True)
+            license_text.setPlainText(Path(__file__).with_name("LICENSE.txt").read_text(encoding="utf-8"))
+            license_text.setMinimumHeight(320)
+            layout.addWidget(license_text)
+            actions = QHBoxLayout()
+            actions.addWidget(self.update_button)
+            actions.addStretch()
+            close_button = QPushButton("Close")
+            close_button.clicked.connect(dialog.accept)
+            actions.addWidget(close_button)
+            layout.addLayout(actions)
+            self.about_dialog = dialog
+        self.about_dialog.show()
+        self.about_dialog.raise_()
+        self.about_dialog.activateWindow()
 
     def _refresh_joystick_selector(self) -> None:
         devices = self.common_page.available_joysticks()
@@ -653,10 +662,12 @@ class MainWindow(QMainWindow):
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if dialog.axis_count > 0:
-                    for role, axis_index in dialog.values().items():
+                    mapping = dialog.values()
+                    for role, axis_index in mapping.items():
                         spin = self._axis_spins[role]
                         spin.setMaximum(max(spin.maximum(), axis_index))
                         spin.setValue(axis_index)
+                    self._save_joystick_profile(mapping)
                 self.led_styles = dialog.led_styles
                 for state, style in self.led_styles.items():
                     self.settings.setValue(f"lights/{state}/color", style.color)
@@ -889,7 +900,63 @@ class MainWindow(QMainWindow):
         if device_index is None or int(device_index) < 0:
             self._set_joystick_status(False, "No joystick detected")
             return
-        self.common_page.select_joystick(int(device_index), connect=True)
+        if self.common_page.select_joystick(int(device_index), connect=True):
+            self._apply_joystick_profile()
+
+    def _joystick_profile_identity(self) -> tuple[str, str, str] | None:
+        joystick = self.common_page.joystick
+        if not self.common_page.joystick_active or joystick is None:
+            return None
+        try:
+            name = str(joystick.get_name() or "").strip()
+        except Exception:
+            name = ""
+        try:
+            guid = str(joystick.get_guid() or "").strip()
+        except Exception:
+            guid = ""
+        key = joystick_profile_key(guid, name)
+        return (key, guid, name) if key else None
+
+    def _apply_joystick_profile(self) -> None:
+        identity = self._joystick_profile_identity()
+        if identity is None:
+            return
+        key, _guid, name = identity
+        raw_profile = self.settings.value(f"joystick_profiles/{key}", "")
+        if not raw_profile:
+            self.axis_assignment_button.setToolTip(
+                "Axis assignments are saved automatically for this joystick after configuration."
+            )
+            return
+        try:
+            profile = json.loads(str(raw_profile))
+            mapping = profile["mapping"]
+            axis_count = int(self.common_page.joystick.get_numaxes())
+            if not all(
+                isinstance(mapping.get(role), int) and 0 <= mapping[role] < axis_count
+                for role in self._axis_spins
+            ):
+                raise ValueError("Saved joystick profile has invalid axis assignments.")
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            self.axis_assignment_button.setToolTip(
+                "The saved axis profile is invalid. Open Configure joystick to replace it."
+            )
+            return
+        for role, axis_index in mapping.items():
+            if role in self._axis_spins:
+                self._axis_spins[role].setValue(axis_index)
+        self.axis_assignment_button.setToolTip(f"Saved axis assignments loaded for {name or 'this joystick'}.")
+        self._update_joystick_feedback(self.common_page.latest_axis_values)
+
+    def _save_joystick_profile(self, mapping: dict[str, int]) -> None:
+        identity = self._joystick_profile_identity()
+        if identity is None:
+            return
+        key, guid, name = identity
+        profile = {"guid": guid, "name": name, "mapping": mapping}
+        self.settings.setValue(f"joystick_profiles/{key}", json.dumps(profile, sort_keys=True))
+        self.axis_assignment_button.setToolTip(f"Axis assignments will load automatically for {name or 'this joystick'}.")
 
     def _set_joystick_status(self, connected: bool, status: str) -> None:
         if connected:
@@ -1618,3 +1685,4 @@ class MainWindow(QMainWindow):
         self.test_button.setVisible(not offline)
         self.local_settings_button.setVisible(offline)
         self.test_row_label.setText("Local settings:" if offline else "Test version:")
+

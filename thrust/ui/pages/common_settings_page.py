@@ -82,8 +82,8 @@ class CommonSettingsPage(QWidget):
         for spin, value in (
             (self.lx_axis_spin, 0),
             (self.ly_axis_spin, 1),
-            (self.ry_axis_spin, 2),
             (self.rx_axis_spin, 3),
+            (self.ry_axis_spin, 2),
         ):
             spin.setRange(0, 16)
             spin.setValue(value)
@@ -110,8 +110,8 @@ class CommonSettingsPage(QWidget):
         mapping_form = QFormLayout(mapping_group)
         mapping_form.addRow("LX:", self.lx_axis_spin)
         mapping_form.addRow("LY:", self.ly_axis_spin)
-        mapping_form.addRow("RY:", self.ry_axis_spin)
         mapping_form.addRow("RX:", self.rx_axis_spin)
+        mapping_form.addRow("RY:", self.ry_axis_spin)
         mapping_form.addRow("Deadzone A,E,T,R:", self.deadzone_edit)
         mapping_form.addRow("Break axis:", self.break_axis_spin)
         mapping_form.addRow("Reset axis:", self.reset_axis_spin)
@@ -206,8 +206,8 @@ class CommonSettingsPage(QWidget):
             "axis_map": {
                 "LX": self.lx_axis_spin.value(),
                 "LY": self.ly_axis_spin.value(),
-                "RY": self.ry_axis_spin.value(),
                 "RX": self.rx_axis_spin.value(),
+                "RY": self.ry_axis_spin.value(),
             },
             "output_root": self.output_root_edit.text().strip(),
             "use_dated_subfolders": self.use_dated_subfolders_check.isChecked(),
@@ -334,3 +334,4 @@ class CommonSettingsPage(QWidget):
         self.joystick_values_changed.emit([])
         if clear_text:
             self.device_status.setText("Joystick test is stopped.")
+
