@@ -155,8 +155,19 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
             TAG="v$VERSION"
           fi
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          awk -v version="$VERSION" '
+            $0 == "## " version { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --repo "$GITHUB_REPOSITORY" --clobber
+            if [[ -s "$NOTES_FILE" ]]; then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE"
+            fi
+          elif [[ -s "$NOTES_FILE" ]]; then
+            gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --notes-file "$NOTES_FILE"
           else
             gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --generate-notes
           fi
