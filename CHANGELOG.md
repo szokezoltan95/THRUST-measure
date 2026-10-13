@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3b
+
+### In-app update test build
+- Added the installed application version and a clear source-to-target version status to the About window.
+- Renamed the update action to **Check for updates** and added a separate install button so the release notes can be reviewed first.
+- Displayed the GitHub release changelog in the About window when an update is found.
+- Included prereleases in update checks to verify the end-to-end updater flow.
+
 ## 1.2.3
 
 ### Windows in-app update fix
@@ -36,5 +44,6 @@
 
 ### Upgrade note
 - Users upgrading from 1.2.0 need to install 1.2.1 once with the usual package. Later releases can be applied from the app.
+
 
 

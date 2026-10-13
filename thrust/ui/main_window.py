@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QTextBrowser,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -56,7 +57,7 @@ from thrust.ui.axis_assignment_dialog import AxisAssignmentDialog
 from thrust.tx16smk3_led import DEFAULTS, LedController, LedStyle, STATES
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
-from thrust.updater import UpdateWorker
+from thrust.updater import UpdateWorker, current_version, display_version
 from thrust.joystick_profiles import joystick_profile_key
 
 
@@ -137,6 +138,11 @@ class MainWindow(QMainWindow):
         self._update_worker: UpdateWorker | None = None
         self._available_update: dict[str, Any] | None = None
         self.about_dialog: QDialog | None = None
+        self.about_version_label: QLabel | None = None
+        self.about_update_status: QLabel | None = None
+        self.about_release_notes: QTextBrowser | None = None
+        self.install_update_button: QPushButton | None = None
+        self._about_status_message = "Check for updates to see whether a newer version is available."
         self.led_styles = {}
         for state in STATES:
             color, animation = DEFAULTS[state]
@@ -414,8 +420,8 @@ class MainWindow(QMainWindow):
         self.about_button.setToolTip("Copyright and open-source license")
         self.about_button.clicked.connect(self._open_about)
         title_row.addWidget(self.about_button)
-        self.update_button = QPushButton("Updates")
-        self.update_button.setToolTip("Check for THRUST-measure updates")
+        self.update_button = QPushButton("Check for updates")
+        self.update_button.setToolTip("Check GitHub for a newer THRUST-measure release")
         self.update_button.clicked.connect(self._update_button_clicked)
         session_actions = QWidget()
         session_actions_layout = QHBoxLayout(session_actions)
@@ -474,14 +480,18 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(5_000, lambda: self._check_for_updates(manual=False))
 
     def _update_button_clicked(self) -> None:
-        if self._available_update is None:
-            self._check_for_updates(manual=True)
-            return
+        self._check_for_updates(manual=True)
+
+    def _install_available_update(self) -> None:
         update = self._available_update
+        if update is None:
+            return
+        installed = display_version(current_version())
+        target = display_version(str(update["version"]))
         answer = QMessageBox.question(
             self,
             "Update THRUST-measure",
-            f"Download and install version {update['version']} now? The app will close and reopen after the update.",
+            f"Install THRUST-measure {target} over version {installed}? The app will close and reopen after the update.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -493,12 +503,17 @@ class MainWindow(QMainWindow):
             return
         self.update_button.setEnabled(False)
         self.update_button.setText("Checking…")
+        self._about_status_message = "Checking GitHub Releases…"
+        self._refresh_about_update_state()
         self._start_update_worker("check", manual=manual)
 
     def _start_update_worker(self, operation: str, update: dict[str, Any] | None = None, manual: bool = False) -> None:
         if operation == "download":
             self.update_button.setEnabled(False)
-            self.update_button.setText("Downloading…")
+            self.install_update_button.setEnabled(False)
+            self.install_update_button.setText("Downloading update…")
+            self._about_status_message = f"Downloading version {display_version(str(update['version']))}…"
+            self._refresh_about_update_state()
         worker = UpdateWorker(operation, update, self)
         worker.result_ready.connect(lambda result: self._handle_update_result(result, manual))
         worker.finished.connect(lambda: self._update_worker_finished(worker))
@@ -510,36 +525,60 @@ class MainWindow(QMainWindow):
         if self._update_worker is worker:
             self._update_worker = None
 
+    def _refresh_about_update_state(self) -> None:
+        if self.about_version_label is None:
+            return
+        installed = display_version(current_version())
+        self.about_version_label.setText(f"Installed version  ·  {installed}")
+        self.about_update_status.setText(self._about_status_message)
+        if self._available_update is not None:
+            target = display_version(str(self._available_update["version"]))
+            self.install_update_button.setText(f"Install update to {target}")
+            self.install_update_button.setVisible(True)
+            notes = str(self._available_update.get("body") or "").strip()
+            self.about_release_notes.setMarkdown(notes or "_This release has no published changelog._")
+            self.about_release_notes.setVisible(True)
+        else:
+            self.install_update_button.setVisible(False)
+            self.about_release_notes.clear()
+            self.about_release_notes.setVisible(False)
+
     def _handle_update_result(self, result: dict[str, Any], manual: bool) -> None:
         self.update_button.setEnabled(True)
+        self.update_button.setText("Check for updates")
         if result.get("operation") == "check" and result.get("ok"):
             self.settings.setValue("updates/last_check", datetime.now(timezone.utc).timestamp())
         if not result.get("ok"):
-            self.update_button.setText("Updates")
-            self.update_button.setToolTip("Could not check or download updates")
+            self._about_status_message = f"Could not check for updates: {result.get('error', 'Unknown error')}"
+            if result.get("operation") == "download" and self.install_update_button is not None:
+                self.install_update_button.setEnabled(True)
+                self.install_update_button.setText(
+                    f"Install update to {display_version(str(self._available_update['version']))}"
+                    if self._available_update else "Install update"
+                )
+            self._refresh_about_update_state()
             if manual or result.get("operation") == "download":
                 QMessageBox.warning(self, "THRUST-measure update", str(result.get("error", "Update failed.")))
             return
         if result.get("operation") == "check":
             self._available_update = result.get("update")
             if self._available_update is None:
-                self.update_button.setText("Updates")
-                self.update_button.setToolTip("THRUST-measure is up to date")
-                if manual:
-                    QMessageBox.information(self, "THRUST-measure update", "You already have the latest version.")
+                self._about_status_message = f"You are using the latest available version ({display_version(current_version())})."
             else:
-                version = self._available_update["version"]
-                self.update_button.setText(f"Update {version}")
-                self.update_button.setToolTip(f"Version {version} is available. Click to update.")
-                if manual:
-                    QMessageBox.information(self, "THRUST-measure update", f"Version {version} is available.")
+                installed = display_version(current_version())
+                target = display_version(str(self._available_update["version"]))
+                self._about_status_message = f"Update available  ·  {installed}  →  {target}"
+            self._refresh_about_update_state()
             return
         if result.get("operation") == "download":
             try:
                 self._launch_update_helper(Path(result["path"]))
             except Exception as exc:
+                self._about_status_message = f"Could not start the updater: {exc}"
+                if self.install_update_button is not None:
+                    self.install_update_button.setEnabled(True)
+                self._refresh_about_update_state()
                 QMessageBox.warning(self, "THRUST-measure update", str(exc))
-                self.update_button.setText("Updates")
 
     def _launch_update_helper(self, archive: Path) -> None:
         executable = Path(sys.executable).resolve()
@@ -588,18 +627,43 @@ class MainWindow(QMainWindow):
             dialog = QDialog(self)
             dialog.setWindowTitle("About THRUST-measure")
             dialog.setMinimumWidth(560)
+            dialog.resize(600, 760)
             layout = QVBoxLayout(dialog)
             heading = QLabel("THRUST-measure · SCoPE · SimPLE")
             heading.setObjectName("appTitle")
             layout.addWidget(heading)
             layout.addWidget(QLabel("Copyright © 2026 Zoltán Szőke · MIT License"))
+
+            update_group = QGroupBox("Software updates")
+            update_layout = QVBoxLayout(update_group)
+            self.about_version_label = QLabel()
+            self.about_version_label.setObjectName("aboutVersion")
+            update_layout.addWidget(self.about_version_label)
+            self.about_update_status = QLabel()
+            self.about_update_status.setWordWrap(True)
+            self.about_update_status.setObjectName("aboutUpdateStatus")
+            update_layout.addWidget(self.about_update_status)
+            self.about_release_notes = QTextBrowser()
+            self.about_release_notes.setOpenExternalLinks(True)
+            self.about_release_notes.setMaximumHeight(160)
+            self.about_release_notes.setVisible(False)
+            update_layout.addWidget(self.about_release_notes)
+            update_actions = QHBoxLayout()
+            update_actions.addWidget(self.update_button)
+            self.install_update_button = QPushButton()
+            self.install_update_button.clicked.connect(self._install_available_update)
+            self.install_update_button.setVisible(False)
+            update_actions.addWidget(self.install_update_button)
+            update_layout.addLayout(update_actions)
+            layout.addWidget(update_group)
+            self._refresh_about_update_state()
+
             license_text = QPlainTextEdit()
             license_text.setReadOnly(True)
             license_text.setPlainText(Path(__file__).with_name("LICENSE.txt").read_text(encoding="utf-8"))
-            license_text.setMinimumHeight(320)
-            layout.addWidget(license_text)
+            license_text.setMinimumHeight(240)
+            layout.addWidget(license_text, 1)
             actions = QHBoxLayout()
-            actions.addWidget(self.update_button)
             actions.addStretch()
             close_button = QPushButton("Close")
             close_button.clicked.connect(dialog.accept)
@@ -810,6 +874,7 @@ class MainWindow(QMainWindow):
                 QToolButton#appearanceButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 7px; min-width: 38px; min-height: 38px; font-size: 17pt; padding: 0; }}
                 QToolButton#appearanceButton:hover {{ color: {colors['accent']}; border-color: {colors['accent']}; background: {colors['surface_alt']}; }}
                 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QPlainTextEdit, QTextEdit {{ color: {colors['text']}; background: {colors['input']}; border: 1px solid {colors['border']}; border-radius: 4px; padding: 6px 8px; selection-background-color: {colors['selection']}; selection-color: {colors['text']}; }}
+    QTextBrowser,
                 QPlainTextEdit#detailedLog {{ background: {colors['log']}; font-family: monospace; font-size: 9pt; }}
                 QLabel#footerLog {{ color: {colors['muted']}; padding-left: 4px; }}
                 QComboBox::drop-down {{ background: {colors['button']}; border: 0; width: 24px; }}
@@ -1685,4 +1750,5 @@ class MainWindow(QMainWindow):
         self.test_button.setVisible(not offline)
         self.local_settings_button.setVisible(offline)
         self.test_row_label.setText("Local settings:" if offline else "Test version:")
+
 

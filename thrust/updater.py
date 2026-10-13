@@ -13,7 +13,7 @@ from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 REPOSITORY = "szokezoltan95/THRUST-measure"
-LATEST_RELEASE_URL = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=30"
 USER_AGENT = "THRUST-measure-updater"
 
 
@@ -24,17 +24,31 @@ def current_version() -> str:
         return "0.0.0"
 
 
-def _version_parts(value: str) -> tuple[int, ...]:
-    match = re.fullmatch(r"v?(\d+(?:\.\d+){1,3})", value.strip())
+def _version_parts(value: str) -> tuple[tuple[int, ...], tuple[int, int]]:
+    match = re.fullmatch(r"v?(\d+(?:\.\d+){1,3})(?:(a|alpha|b|beta|rc)(\d*))?", value.strip(), re.IGNORECASE)
     if not match:
         raise ValueError(f"Unsupported version: {value}")
-    return tuple(int(part) for part in match.group(1).split("."))
+    numeric = tuple(int(part) for part in match.group(1).split("."))
+    suffix = (match.group(2) or "").lower()
+    sequence = int(match.group(3) or 0)
+    # The `b` suffix is used here for an in-place updater smoke-test build,
+    # so 1.2.3b must sort after 1.2.3. Normal alpha/beta/rc ordering applies otherwise.
+    stage = {"a": 1, "alpha": 1, "b": 4, "beta": 4, "rc": 5}.get(suffix, 3)
+    return numeric, (stage, sequence)
 
 
 def is_newer_version(candidate: str, installed: str) -> bool:
-    left, right = _version_parts(candidate), _version_parts(installed)
-    size = max(len(left), len(right))
-    return left + (0,) * (size - len(left)) > right + (0,) * (size - len(right))
+    left_parts, left_stage = _version_parts(candidate)
+    right_parts, right_stage = _version_parts(installed)
+    size = max(len(left_parts), len(right_parts))
+    left = left_parts + (0,) * (size - len(left_parts))
+    right = right_parts + (0,) * (size - len(right_parts))
+    return (left, left_stage) > (right, right_stage)
+
+
+def display_version(value: str) -> str:
+    """Render normalized PEP 440 test versions with a concise beta suffix."""
+    return re.sub(r"(?i)b0$", "b", value.strip())
 
 
 def expected_asset_suffix(system: str | None = None, machine: str | None = None) -> str:
@@ -60,27 +74,37 @@ def find_update_asset(release: dict, suffix: str) -> dict:
 
 def check_latest_release(installed_version: str | None = None) -> dict | None:
     request = urllib.request.Request(
-        LATEST_RELEASE_URL,
+        RELEASES_URL,
         headers={"Accept": "application/vnd.github+json", "User-Agent": USER_AGENT},
     )
     with urllib.request.urlopen(request, timeout=12) as response:
-        release = json.load(response)
-    tag = str(release.get("tag_name", ""))
-    latest = tag.removeprefix("v")
-    if not is_newer_version(latest, installed_version or current_version()):
-        return None
-    asset = find_update_asset(release, expected_asset_suffix())
-    digest = str(asset.get("digest") or "")
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        raise RuntimeError("GitHub did not provide a SHA-256 digest for the update package.")
-    return {
-        "version": latest,
-        "tag": tag,
-        "release_url": release.get("html_url", ""),
-        "download_url": asset.get("browser_download_url", ""),
-        "name": asset.get("name", ""),
-        "digest": digest.removeprefix("sha256:"),
-    }
+        releases = json.load(response)
+    installed = installed_version or current_version()
+    for release in releases:
+        if release.get("draft"):
+            continue
+        tag = str(release.get("tag_name", ""))
+        latest = tag.removeprefix("v")
+        try:
+            newer = is_newer_version(latest, installed)
+        except ValueError:
+            continue
+        if not newer:
+            continue
+        asset = find_update_asset(release, expected_asset_suffix())
+        digest = str(asset.get("digest") or "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise RuntimeError("GitHub did not provide a SHA-256 digest for the update package.")
+        return {
+            "version": latest,
+            "tag": tag,
+            "release_url": release.get("html_url", ""),
+            "download_url": asset.get("browser_download_url", ""),
+            "name": asset.get("name", ""),
+            "digest": digest.removeprefix("sha256:"),
+            "body": str(release.get("body") or "").strip(),
+        }
+    return None
 
 
 def download_update(update: dict) -> str:
@@ -127,3 +151,4 @@ class UpdateWorker(QThread):
         except Exception as exc:
             result = {"operation": self.operation, "ok": False, "error": str(exc)}
         self.result_ready.emit(result)
+
