@@ -51,7 +51,7 @@ jobs:
           python -m pip install '.[gui]' pyinstaller
           python scripts/render_splash.py .release-assets/splash.png
           python -m PyInstaller --noconfirm --clean --windowed --onedir --name THRUST-measure --icon THRUST.ico --splash .release-assets/splash.png --add-data "THRUST.ico;." --add-data "profiles;profiles" --collect-data thrust --copy-metadata thrust-measurement --hidden-import matplotlib.backends.backend_pdf main.py
-          python -m PyInstaller --noconfirm --clean --onefile --name THRUST-updater scripts/thrust_updater.py
+          python -m PyInstaller --noconfirm --clean --onefile --noconsole --name THRUST-updater scripts/thrust_updater.py
           Copy-Item dist/THRUST-updater.exe dist/THRUST-measure/
           New-Item -ItemType Directory -Force release | Out-Null
           Compress-Archive -Path 'dist/THRUST-measure/*' -DestinationPath "release/THRUST-measure-$env:VERSION-windows-x64.zip" -Force
@@ -176,3 +176,4 @@ jobs:
           else
             gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "THRUST-measure $VERSION" --generate-notes
           fi
+

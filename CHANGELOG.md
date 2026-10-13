@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3
+
+### Windows in-app update fix
+- Fixed the updater waiting for the THRUST-measure process: Windows now waits on a native process handle instead of using a POSIX-style PID signal check that failed with WinError 87.
+- Built the Windows update helper without a console window, avoiding the brief CMD flash during updates.
+- If an update fails, the helper now shows an error dialog and saves diagnostic details to `%LOCALAPPDATA%\THRUST-measure\update.log`.
+- Added regression tests for Windows process waiting and the case where the app has already exited.
+
 ## 1.2.2
 
 ### Joystick configuration
@@ -28,4 +36,5 @@
 
 ### Upgrade note
 - Users upgrading from 1.2.0 need to install 1.2.1 once with the usual package. Later releases can be applied from the app.
+
 
