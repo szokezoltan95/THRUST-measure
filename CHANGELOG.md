@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.3.0
+
+### Reliable measurement uploads
+- Measurement compression, verification, and WebDB upload now run asynchronously, so a slow or interrupted connection does not freeze the measurement interface.
+- Added a persistent local upload queue. Pending measurements are retained across restarts and can resume when WebDB becomes reachable again.
+- Added upload progress reporting from compression through server confirmation, with retry support after a failed upload.
+- Failed uploads keep the measurement file locally and show a concise failure status alongside the measurement details.
+
+### Clearer system and connection status
+- Reworked the main status area to show connection and activity states together, with a single contextual **Connect** or **Details** action.
+- Added a dedicated WebDB details window with color-coded connection health, last successful refresh, upload queue status, current or most recent measurement, progress, and activity logs.
+- Moved **Disconnect** into the details window and disabled it while a measurement or upload is active.
+- Made the details window a fixed, compact size. Progress text now sits beside the measurement summary, above a full-width progress bar.
+- Shortened routine logs and suppressed per-action measurement diagnostics so important connection and upload events are easier to find.
+
+### Interactive joystick preflight
+- Start readiness now checks joystick connection, axis assignments, and that every required axis has reached both negative and positive limits.
+- Added clear disconnected, testing, and ready states, including color feedback on the axis bars and a test count in the main status row.
+- Simplified the axis labels and joystick button text while keeping the test instruction in the bottom readiness status.
+
+### Reliability checks
+- Added and expanded tests for persistent upload queue behavior, compression progress, and upload progress and confirmation.
+- Improved end-of-session status reporting for SCoPE and SimPLE measurements.
+
 ## 1.2.4
 
 ### In-app updates
