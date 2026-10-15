@@ -1,76 +1,83 @@
 # THRUST-measure
 
-THRUST-measure is a desktop application for structured research into how people control unmanned aircraft. It is part of the **THRUST** research system (Testing Hub for Research in UAV Simulation and Training), developed at the Faculty of Aeronautics, Technical University of Košice.
+**A research tool for structured measurement of UAV control performance.**
 
-## Why THRUST exists
+THRUST-measure presents repeatable **SCoPE** control tasks and **SimPLE** 2D flight tasks, records controller input and task events, and analyses each measurement. It is part of the THRUST research system developed at the Faculty of Aeronautics, Technical University of Košice.
 
-Research on UAV control needs repeatable tasks and measurements. THRUST gives a study team a way to configure the same test for participants, record their control inputs and responses, and compare results across a study. A consistent test setup makes comparisons more meaningful than asking participants to fly under different conditions.
+> [!WARNING]
+> **The Windows application is currently unsigned.** Windows SmartScreen may show **“Windows protected your PC”** or identify an unknown publisher when you run the installer. This warning is expected for an unsigned application; it does not independently confirm that a file is safe.
+>
+> Download the installer only from the [official GitHub Releases page](https://github.com/szokezoltan95/THRUST-measure/releases). Check that the repository and release are correct before proceeding. If you trust that official download, select **More info → Run anyway** to continue. On managed computers, your administrator may block this action.
+>
+> macOS may also require you to approve an app from an unidentified developer in **System Settings → Privacy & Security**. Only approve a copy downloaded from the official release page.
 
-THRUST-measure is a research instrument. Its results describe performance in the selected tasks and conditions; they are not, by themselves, a certificate of real-world piloting ability or a universal score of pilot competence.
+[![Latest release](https://img.shields.io/github/v/release/szokezoltan95/THRUST-measure?label=latest%20release)](https://github.com/szokezoltan95/THRUST-measure/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## What participants do
+## Download
 
-Participants use a compatible USB joystick or radio controller in joystick mode to complete one of two types of task:
+Get the latest version from **[GitHub Releases](https://github.com/szokezoltan95/THRUST-measure/releases/latest)**. Choose the package for your operating system:
 
-- **SCoPE** presents structured control tasks and records how the participant responds to requested control inputs.
-- **SimPLE** presents a two-dimensional UAV simulation and records control during simulated flight tasks.
-
-The application records the control data and produces measurement results for the research study. It does not control a real aircraft.
-
-## THRUST WebDB is central to the research workflow
-
-THRUST-measure is designed to work with **THRUST-WebDB**. WebDB provides the study's participant accounts and IDs, test versions, measurement upload, result storage, and cohort comparisons. The study team uses it to make sure participants perform the intended test version and to collect comparable results in one place.
-
-For meaningful research use, connect to the WebDB instance provided by your study team and sign in with the account they give you. Without WebDB, local mode can run tasks using local profiles, but it does not provide shared participant and test management, central result storage, or cohort comparisons. THRUST-measure is therefore not intended as a standalone general-purpose simulator.
-
-If you are joining a study, ask its organizer for access to the correct WebDB and instructions for the test and controller. Do not use another study's participant ID or test configuration.
-
-## How the system works
-
-THRUST is made up of two cooperating parts:
-
-1. **THRUST-measure** runs on the participant's computer. It connects to a joystick or radio controller, presents the selected SCoPE or SimPLE task, records time-stamped control inputs and task events, and calculates the per-measurement analysis.
-2. **THRUST-WebDB** coordinates the study. The desktop app signs in to the WebDB service over HTTPS to obtain participant and test information and to upload completed results. The app communicates with the service through its web API; it does not connect directly to the database.
-
-The WebDB service has a web interface, an API, and a PostgreSQL database. It manages accounts and permissions, participants, test versions, and saved measurements. It also provides study-level and cohort comparisons.
-
-### What is recorded
-
-After a session, THRUST-measure saves a compressed raw measurement log and a separate analysis file in the user's `Documents/THRUST/output` folder. Depending on the task, these contain controller inputs, requested actions, timing, task events, and calculated measures such as response and tracking performance.
-
-When connected to WebDB, the app uploads the measurement and its analysis to the selected study. The server checks and stores the submitted result; it does not repeat the per-measurement calculations. Group statistics and comparisons are handled separately in WebDB.
-
-### Keeping test results comparable
-
-A WebDB test version identifies the test configuration participants should perform. The result is associated with that version and its analysis settings, so researchers can distinguish measurements made under different conditions. Comparisons are most useful when participants use the same test version, controller setup, and procedure.
-
-Measurements are associated with participant IDs and stored under the study's WebDB access rules. Follow the study team's instructions and consent information when collecting or handling participant data.
-
-## Installation
-
-Download the package for your computer from [Releases](https://github.com/szokezoltan95/THRUST-measure/releases).
-
-| Platform | Installer | How to start |
+| Platform | Recommended download | Installation |
 | --- | --- | --- |
-| Windows x64 | `*-windows-x64-setup.exe` | Run the setup wizard. It adds a Start menu entry and can add a desktop shortcut. |
-| Ubuntu/Debian amd64 | `*-linux-amd64.deb` | Open the package with your package manager, then launch THRUST-measure from the applications menu. |
-| macOS Intel | `*-macos-x64.pkg` | Run the installer, open the app in Applications, and optionally add it to the Dock. |
-| macOS Apple Silicon | `*-macos-arm64.pkg` | Run the installer, open the app in Applications, and optionally add it to the Dock. |
+| Windows 10/11, x64 | `THRUST-measure-*-windows-x64-setup.exe` | Run the setup wizard. It can add a Start menu entry and desktop shortcut. See the SmartScreen warning above. |
+| Ubuntu/Debian, amd64 | `THRUST-measure-*-linux-amd64.deb` | Open the package with your software installer, or install it with your package manager. |
+| macOS, Apple Silicon | `THRUST-measure-*-macos-arm64.pkg` | Open the package, complete installation, then launch the app from Applications. |
+| macOS, Intel | `THRUST-measure-*-macos-x64.pkg` | Open the package, complete installation, then launch the app from Applications. |
 
-The installers include the Python runtime and application libraries. You do not need to install Python, Git, or a virtual environment to use them.
+ZIP and TAR.GZ packages are also available on the release page for users who prefer an archive. Installers include the application runtime and libraries: **you do not need to install Python** to use them.
 
-### TX16SMK3 LED rings
+### Update the app
 
-With the [custom TX16SMK3 EdgeTX firmware](https://github.com/szokezoltan95/edgetx/tree/tx16smk3-pc-led-control), connect the radio in USB joystick mode and open **Configure joystick…**. Enable **TX16SMK3 lights**, then use **Configure lights…** to choose a color and brightness animation for idle, ready, countdown, outside zone, and inside zone. The two rings always show the same color. These settings are saved on this computer, and the feature is off by default. Disabling it or closing THRUST-measure returns LED control to the radio; the firmware also restores its own control after a five-second communication timeout.
+Open **About** in THRUST-measure and select **Check for updates**. The app can show the available version and its release notes before you choose to install it. The updater downloads the package and applies the update; you do not need to manually find and install each new version.
 
-You can enable **Create local response graphs after measurement** to save a PDF graph alongside the measurement results.
+## What it does
 
-The Windows and macOS installers are not currently signed. Windows may show a SmartScreen warning, and macOS may ask you to approve the app in System Settings before opening it. Only install a copy obtained from the project's official release page.
+- **SCoPE** presents structured stick-to-target control tasks.
+- **SimPLE** presents a two-dimensional UAV simulation.
+- Supports compatible USB joysticks and radio controllers operating in USB joystick mode.
+- Remembers axis assignments in joystick-specific profiles.
+- Checks joystick readiness before a measurement, including required axis travel.
+- Records time-stamped inputs and task events and can create local response graphs.
+- Uploads measurements and analysis to THRUST-WebDB when connected.
 
-### Windows source installation
+THRUST-measure does not control a real aircraft. Its results describe performance in the selected tasks and conditions; on their own, they are not a certificate of real-world piloting ability or a universal measure of pilot competence.
 
-If you prefer to use the source package, download the **Source code (zip)** from a release, extract it to a permanent folder, and run `install_thrust.bat`. This method requires Python 3.11 or newer and an internet connection to install the required libraries. It creates a virtual environment in the extracted folder and a desktop shortcut that points to it. Keep that folder in place after installation.
+## Using THRUST-WebDB
 
-## License
+THRUST-measure is designed to work with **THRUST-WebDB**, which provides study accounts, participant IDs, test versions, shared result storage, and cohort comparisons. If you are taking part in a study, ask its organizer for the correct WebDB address, account, controller setup, and test instructions. Do not use another study's participant ID or test configuration.
 
-THRUST-measure source code is available under the [MIT License](LICENSE). Third-party libraries and assets retain their own licenses.
+The app communicates with WebDB through its HTTPS API. It does not connect directly to the database.
+
+If the connection drops during upload, the app keeps pending measurements in a persistent local queue so they can be retried after connectivity returns. Measurement files and analysis are also saved locally under `Documents/THRUST/output`. Follow your study's consent and data-handling instructions when using or transferring these files.
+
+## Controller support: TX16SMK3 LED rings
+
+For LED ring control, the RadioMaster TX16SMK3 needs the project's [custom EdgeTX firmware](https://github.com/szokezoltan95/edgetx/tree/tx16smk3-pc-led-control). Connect the radio in USB joystick mode, open **Configure joystick…**, and enable **TX16SMK3 lights**. Use **Configure lights…** to set colors and animations. LED control is off by default; disabling it or closing THRUST-measure returns control to the radio.
+
+## Installing from source
+
+For a Windows source installation, download **Source code (zip)** from a release, extract it to a permanent folder, and run `install_thrust.bat`. This method requires Python 3.11 or newer and an internet connection to install dependencies. It creates a virtual environment and a desktop shortcut; keep the extracted folder in place.
+
+For a development environment with Python 3.11 or newer:
+
+```bash
+python -m pip install -e ".[gui]"
+thrust-measure
+```
+
+Run the test suite with:
+
+```bash
+python -m pytest -q
+```
+
+## Project information
+
+THRUST-measure is developed at the **Faculty of Aeronautics, Technical University of Košice** as part of the THRUST research system.
+
+- [Latest release and downloads](https://github.com/szokezoltan95/THRUST-measure/releases/latest)
+- [Changelog](CHANGELOG.md)
+- [License](LICENSE)
+
+The THRUST-measure source code is available under the [MIT License](LICENSE). Third-party libraries and assets retain their own licenses.
