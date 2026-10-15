@@ -65,6 +65,7 @@ from thrust.upload_queue import MeasurementUploadQueue
 
 class MeasurementUploadDialog(QDialog):
     retry_requested = pyqtSignal()
+    disconnect_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -89,11 +90,14 @@ class MeasurementUploadDialog(QDialog):
         self.retry_button = QPushButton("Retry upload")
         self.retry_button.setVisible(False)
         self.retry_button.clicked.connect(self.retry_requested.emit)
+        self.disconnect_button = QPushButton("Disconnect")
+        self.disconnect_button.clicked.connect(self.disconnect_requested.emit)
         self.close_button = QPushButton("Close")
         self.close_button.setEnabled(False)
         self.close_button.clicked.connect(self.accept)
         buttons = QHBoxLayout()
         buttons.addStretch()
+        buttons.addWidget(self.disconnect_button)
         buttons.addWidget(self.retry_button)
         buttons.addWidget(self.close_button)
 
@@ -105,6 +109,10 @@ class MeasurementUploadDialog(QDialog):
         layout.addWidget(self.archive_label)
         layout.addLayout(buttons)
         self._last_stage = ""
+
+    def set_connection_controls(self, connected: bool, disconnect_enabled: bool = True) -> None:
+        self.disconnect_button.setVisible(connected)
+        self.disconnect_button.setEnabled(disconnect_enabled)
 
     def add_detail(self, message: str) -> None:
         self.activity_log.appendPlainText(f"[{datetime.now().astimezone():%H:%M:%S}] {message}")
@@ -446,11 +454,8 @@ class MainWindow(QMainWindow):
         self.config_source_combo.addItems(["WebDB", "Local offline"])
         self.config_source_combo.setVisible(False)
 
-        self.connect_button = QPushButton("Connect")
-        self.connect_button.clicked.connect(self._open_login)
-        self.disconnect_button = QPushButton("Disconnect")
-        self.disconnect_button.clicked.connect(self._disconnect_webdb)
-        self.disconnect_button.setVisible(False)
+        self.connection_action_button = QPushButton("Connect")
+        self.connection_action_button.clicked.connect(self._connection_action_clicked)
 
         self.connection_status = QLabel("● WebDB DISCONNECTED · Offline mode")
         self.connection_status.setObjectName("connectionStatus")
@@ -641,11 +646,6 @@ class MainWindow(QMainWindow):
             title.setObjectName("appTitle")
             title_row.addWidget(title)
         title_row.addStretch()
-        self.upload_status_button = QPushButton("Details")
-        self.upload_status_button.setObjectName("logsButton")
-        self.upload_status_button.clicked.connect(self._show_measurement_upload)
-        if self._pending_upload_payload is not None:
-            self.upload_status_button.setToolTip("View the restored upload queue and its progress.")
         self.appearance_button = QToolButton()
         self.appearance_button.setObjectName("appearanceButton")
         self.appearance_button.setText("◐")
@@ -681,26 +681,29 @@ class MainWindow(QMainWindow):
         self.update_button.setToolTip("Check GitHub for a newer THRUST-measure release")
         self.update_button.clicked.connect(self._update_button_clicked)
         session_actions = QWidget()
-        session_actions_layout = QHBoxLayout(session_actions)
+        session_actions_layout = QVBoxLayout(session_actions)
         session_actions_layout.setContentsMargins(0, 0, 0, 0)
+        session_actions_layout.setSpacing(4)
         session_actions_layout.addWidget(self.connection_status)
-        session_actions_layout.addStretch()
-        session_actions_layout.addWidget(self.connect_button)
-        session_actions_layout.addWidget(self.disconnect_button)
 
         self.activity_status = QLabel("Idle")
         self.activity_status.setObjectName("activityStatus")
         self.activity_status.setProperty("state", "idle")
-        self.activity_status.setMinimumWidth(185)
-        self.activity_status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.activity_status.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.activity_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        session_actions_layout.addWidget(self.activity_status)
+
+        session_button_column = QWidget()
+        session_button_layout = QVBoxLayout(session_button_column)
+        session_button_layout.setContentsMargins(0, 0, 0, 0)
+        session_button_layout.addWidget(self.connection_action_button)
+        session_button_layout.addStretch()
 
         session_ribbon = QGroupBox("System status")
         session_ribbon_layout = QHBoxLayout(session_ribbon)
         session_ribbon_layout.setContentsMargins(10, 4, 10, 4)
-        session_ribbon_layout.addWidget(session_actions, 2)
-        session_ribbon_layout.addWidget(self.activity_status, 1)
-        session_ribbon_layout.addWidget(self.upload_status_button)
+        session_ribbon_layout.addWidget(session_actions, 1)
+        session_ribbon_layout.addWidget(session_button_column)
 
         controls_panel = QWidget()
         controls_layout = QVBoxLayout(controls_panel)
@@ -1336,7 +1339,7 @@ class MainWindow(QMainWindow):
             self.activity_status.setProperty("state", state)
             self.activity_status.style().unpolish(self.activity_status)
             self.activity_status.style().polish(self.activity_status)
-        self.upload_status_button.setToolTip(
+        self.connection_action_button.setToolTip(
             f"Open activity details · {queued_count} measurement(s) in the persistent upload queue."
             if queued_count else "Open recent processing details."
         )
@@ -1344,6 +1347,24 @@ class MainWindow(QMainWindow):
     def _update_activity_progress(self, stage: str, _current: object, _total: object, _detail: str) -> None:
         self._upload_activity_stage = stage
         self._refresh_activity_status()
+
+    def _connection_action_clicked(self) -> None:
+        if self.offline_mode or self.client is None:
+            self._open_login()
+        else:
+            self._show_measurement_upload()
+
+    def _refresh_connection_action(self) -> None:
+        connected = not self.offline_mode and self.client is not None
+        self.connection_action_button.setText("Details" if connected else "Connect")
+        self.connection_action_button.setToolTip(
+            "View activity details or disconnect from WebDB" if connected
+            else "Connect to WebDB"
+        )
+        if self._upload_dialog is not None:
+            self._upload_dialog.set_connection_controls(
+                connected, not self._measurement_active and not self._upload_in_progress
+            )
 
     def _measurement_mode_changed(self, _index: int = 0) -> None:
         self._update_joystick_feedback(self.common_page.latest_axis_values)
@@ -1535,8 +1556,7 @@ class MainWindow(QMainWindow):
             identity = account.get("participant_code") if role == "student" else account.get("username", "")
             self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
             self._set_connection_state("connected")
-            self.connect_button.setVisible(False)
-            self.disconnect_button.setVisible(True)
+            self._refresh_connection_action()
             self._update_selection_mode_controls()
             if self.advanced_dialog is not None:
                 self.advanced_dialog.set_offline_visible(False)
@@ -1708,8 +1728,7 @@ class MainWindow(QMainWindow):
         self._sync_selection_labels()
         self.connection_status.setText(f"● WebDB CONNECTED · {account.get('participant_code') if client.role == 'student' else account.get('username', '')}")
         self._set_connection_state("connected")
-        self.connect_button.setVisible(False)
-        self.disconnect_button.setVisible(True)
+        self._refresh_connection_action()
         self._update_selection_mode_controls()
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(False)
@@ -1799,8 +1818,7 @@ class MainWindow(QMainWindow):
 
         self.connection_status.setText("● WebDB DISCONNECTED · Offline mode")
         self._set_connection_state("warning")
-        self.connect_button.setVisible(True)
-        self.disconnect_button.setVisible(False)
+        self._refresh_connection_action()
         self._update_selection_mode_controls()
         if self.advanced_dialog is not None:
             self.advanced_dialog.set_offline_visible(True)
@@ -1968,6 +1986,7 @@ class MainWindow(QMainWindow):
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+            self._upload_dialog.disconnect_requested.connect(self._disconnect_from_details)
         else:
             self._upload_dialog.begin_new_upload()
         self._upload_dialog.set_progress(
@@ -1982,6 +2001,7 @@ class MainWindow(QMainWindow):
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+            self._upload_dialog.disconnect_requested.connect(self._disconnect_from_details)
             if self._pending_upload_payload is not None:
                 self._upload_dialog.show_waiting_for_connection(
                     str(self._pending_upload_payload.get("participant_code", "")),
@@ -1989,9 +2009,21 @@ class MainWindow(QMainWindow):
                 )
             else:
                 self._upload_dialog.show_idle(len(self._upload_queue.pending()))
+        self._refresh_connection_action()
+        self._upload_dialog.set_connection_controls(
+            not self.offline_mode and self.client is not None,
+            not self._measurement_active and not self._upload_in_progress,
+        )
         self._upload_dialog.show()
         self._upload_dialog.raise_()
         self._upload_dialog.activateWindow()
+
+    def _disconnect_from_details(self) -> None:
+        if self._measurement_active or self._upload_in_progress:
+            return
+        if self._upload_dialog is not None:
+            self._upload_dialog.hide()
+        self._disconnect_webdb()
 
     def _retry_measurement_upload(self) -> None:
         if self._pending_upload_payload is None:
@@ -2026,6 +2058,7 @@ class MainWindow(QMainWindow):
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+            self._upload_dialog.disconnect_requested.connect(self._disconnect_from_details)
         self._upload_dialog.begin_new_upload()
         self._upload_dialog.set_progress(
             "Resuming pending upload", None, None,
@@ -2092,6 +2125,7 @@ class MainWindow(QMainWindow):
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+            self._upload_dialog.disconnect_requested.connect(self._disconnect_from_details)
         self._upload_dialog.show_failure(message, archive_path, self._pending_upload_payload)
         self._upload_in_progress = False
         self._upload_activity_stage = "Upload pending"
