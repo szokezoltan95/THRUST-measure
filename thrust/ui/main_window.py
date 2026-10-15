@@ -116,8 +116,10 @@ class MeasurementUploadDialog(QDialog):
         task_box = QGroupBox("Current task")
         task_box_layout = QVBoxLayout(task_box)
         task_box_layout.addWidget(self.stage_label)
-        task_box_layout.addWidget(self.detail_label)
-        task_box_layout.addWidget(self.progress_text)
+        task_summary_row = QHBoxLayout()
+        task_summary_row.addWidget(self.detail_label, 1)
+        task_summary_row.addWidget(self.progress_text)
+        task_box_layout.addLayout(task_summary_row)
         task_box_layout.addWidget(self.progress_bar)
         task_box_layout.addWidget(self.archive_label)
 
