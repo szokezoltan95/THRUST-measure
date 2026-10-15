@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QSettings, QTimer, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QObject, QSettings, QTimer, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QActionGroup, QColor, QDesktopServices, QFont, QGuiApplication, QPalette
 from PyQt6.QtSvgWidgets import QSvgWidget
 from PyQt6.QtWidgets import (
@@ -59,6 +59,186 @@ from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 from thrust.updater import UpdateWorker, current_version, display_version
 from thrust.joystick_profiles import joystick_profile_key
+from thrust.raw_compression import compress_raw_log
+
+
+class MeasurementUploadDialog(QDialog):
+    retry_requested = pyqtSignal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Measurement upload")
+        self.setMinimumSize(610, 440)
+        self.setWindowModality(Qt.WindowModality.NonModal)
+
+        self.stage_label = QLabel("Preparing measurement upload…")
+        self.stage_label.setObjectName("appTitle")
+        self.detail_label = QLabel("The measurement is safely stored locally while it is prepared.")
+        self.detail_label.setWordWrap(True)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.activity_log = QPlainTextEdit()
+        self.activity_log.setReadOnly(True)
+        self.activity_log.setMinimumHeight(250)
+        self.archive_label = QLabel()
+        self.archive_label.setWordWrap(True)
+        self.archive_label.setVisible(False)
+
+        self.retry_button = QPushButton("Retry upload")
+        self.retry_button.setVisible(False)
+        self.retry_button.clicked.connect(self.retry_requested.emit)
+        self.close_button = QPushButton("Close")
+        self.close_button.setEnabled(False)
+        self.close_button.clicked.connect(self.accept)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        buttons.addWidget(self.retry_button)
+        buttons.addWidget(self.close_button)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.stage_label)
+        layout.addWidget(self.detail_label)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.activity_log, 1)
+        layout.addWidget(self.archive_label)
+        layout.addLayout(buttons)
+        self._last_stage = ""
+
+    def add_detail(self, message: str) -> None:
+        self.activity_log.appendPlainText(f"[{datetime.now().astimezone():%H:%M:%S}] {message}")
+
+    def set_progress(self, stage: str, current: int | None, total: int | None, detail: str) -> None:
+        self.stage_label.setText(stage)
+        self.detail_label.setText(detail)
+        if stage != self._last_stage:
+            self.add_detail(stage)
+            self._last_stage = stage
+        if current is None or total is None or total <= 0:
+            self.progress_bar.setRange(0, 0)
+            return
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(min(1000, int(current * 1000 / total)))
+        self.progress_bar.setFormat(f"%p% · {current / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB")
+
+    def prepare_retry(self) -> None:
+        self.retry_button.setVisible(False)
+        self.close_button.setEnabled(False)
+        self.archive_label.setVisible(False)
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Preparing…")
+        self.add_detail("Starting a new upload attempt.")
+        self._last_stage = ""
+
+    def begin_new_upload(self) -> None:
+        self.activity_log.clear()
+        self.retry_button.setVisible(False)
+        self.close_button.setEnabled(False)
+        self.archive_label.setVisible(False)
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Preparing…")
+        self._last_stage = ""
+
+    def show_failure(self, message: str, archive_path: str) -> None:
+        self.stage_label.setText("Upload could not be completed")
+        self.detail_label.setText(message)
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Upload failed")
+        self.archive_label.setText(f"Local measurement file is preserved at:\n{archive_path}")
+        self.archive_label.setVisible(True)
+        self.retry_button.setVisible(True)
+        self.close_button.setEnabled(True)
+        self.add_detail(f"Upload failed: {message}")
+        self.add_detail(f"Local measurement file preserved: {archive_path}")
+
+    def show_success(self, measurement_id: str, archive_path: str) -> None:
+        self.stage_label.setText("Measurement stored in WebDB")
+        self.detail_label.setText(f"WebDB confirmed the upload. Measurement ID: {measurement_id}")
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(1000)
+        self.progress_bar.setFormat("Complete")
+        self.archive_label.setText(f"Local archive: {archive_path}")
+        self.archive_label.setVisible(True)
+        self.retry_button.setVisible(False)
+        self.close_button.setEnabled(True)
+        self.add_detail(f"WebDB confirmed storage (measurement {measurement_id}).")
+
+
+class MeasurementUploadWorker(QObject):
+    progress = pyqtSignal(str, object, object, str)
+    succeeded = pyqtSignal(object, str, object)
+    failed = pyqtSignal(str, str)
+    finished = pyqtSignal()
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        super().__init__()
+        self.payload = payload
+        self.local_path = str(payload["raw_log_path"])
+
+    def run(self) -> None:
+        try:
+            self.progress.emit("Compressing raw log", None, None, "Compressing the measurement log in the background.")
+            archive_path = compress_raw_log(
+                self.local_path,
+                progress_callback=lambda stage, current, total: self.progress.emit(
+                    stage, current, total,
+                    "Compressing the measurement log." if stage == "Compressing raw log"
+                    else "Checking the compressed archive before upload.",
+                ),
+            )
+            self.local_path = str(archive_path)
+            self.progress.emit("Analyzing measurement", None, None, "Preparing the measurement results and metadata.")
+            if self.payload["is_simple"]:
+                analysis = analyze_simple_log(archive_path, started_at=self.payload["started_at"])
+            else:
+                analysis = analyze_scope_log(archive_path)
+            analysis = build_analysis_artifact(
+                archive_path,
+                analysis,
+                started_at=self.payload["started_at"],
+                test=self.payload["test"],
+                parameters=self.payload["session_parameters"],
+                runtime=self.payload["runtime"],
+                session_summary=self.payload["session_summary"],
+            )
+            analysis_path = save_analysis_artifact(archive_path, analysis)
+            graph_path: str | None = None
+            if self.payload["create_local_graph"]:
+                try:
+                    graph_path = str(save_local_response_graph(
+                        archive_path, analysis,
+                        participant_id=self.payload["participant_code"],
+                    ))
+                except Exception as graph_error:
+                    self.progress.emit(
+                        "Preparing upload package", None, None,
+                        f"Local graph could not be created ({graph_error}); continuing with upload.",
+                    )
+            self.progress.emit(
+                "Preparing upload package", None, None,
+                f"Analysis saved locally ({analysis_path}). Encoding the archive for WebDB.",
+            )
+            uploaded = self.payload["client"].upload_measurement(
+                participant_id=self.payload["participant_id"],
+                test_definition_id=self.payload["test_definition_id"],
+                started_at=analysis.get("started_at") or self.payload["started_at"],
+                raw_log_path=archive_path,
+                analysis_data=analysis,
+                status=self.payload["status"],
+                precompressed=True,
+                progress_callback=lambda stage, current, total, detail: self.progress.emit(
+                    stage, current, total, detail,
+                ),
+            )
+            self.local_path = str(archive_path)
+            self.succeeded.emit(uploaded, self.local_path, graph_path)
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}", self.local_path)
+        finally:
+            self.finished.emit()
 
 
 class LoginDialog(QDialog):
@@ -170,6 +350,11 @@ class MainWindow(QMainWindow):
         self._catalogue_connection_ok = False
         self._reconnect_in_flight = False
         self._measurement_active = False
+        self._upload_in_progress = False
+        self._upload_dialog: MeasurementUploadDialog | None = None
+        self._upload_worker: MeasurementUploadWorker | None = None
+        self._upload_thread: threading.Thread | None = None
+        self._pending_upload_payload: dict[str, Any] | None = None
         self._measurement_lock = threading.Lock()
         self._remote_disconnect_requested = False
         self._presence_stop_event: threading.Event | None = None
@@ -389,6 +574,11 @@ class MainWindow(QMainWindow):
             title.setObjectName("appTitle")
             title_row.addWidget(title)
         title_row.addStretch()
+        self.upload_status_button = QPushButton("Upload in progress")
+        self.upload_status_button.setObjectName("logsButton")
+        self.upload_status_button.setVisible(False)
+        self.upload_status_button.clicked.connect(self._show_measurement_upload)
+        title_row.addWidget(self.upload_status_button)
         self.appearance_button = QToolButton()
         self.appearance_button.setObjectName("appearanceButton")
         self.appearance_button.setText("◐")
@@ -927,8 +1117,10 @@ class MainWindow(QMainWindow):
             else self.participant_combo.currentData()
         )
         test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
+        upload_blocks_online_run = self._pending_upload_payload is not None and not self.offline_mode
         self.run_button.setEnabled(connected and test_ready and participant_ready and
-                                   (self.offline_mode or self._catalogue_connection_ok))
+                                   (self.offline_mode or self._catalogue_connection_ok)
+                                   and not self._upload_in_progress and not upload_blocks_online_run)
         if self.led_controller is not None and not self._measurement_active:
             self.led_controller.set_state("ready" if self.run_button.isEnabled() else "idle")
         webdb_ready = not self.offline_mode and self._catalogue_connection_ok
@@ -1198,7 +1390,7 @@ class MainWindow(QMainWindow):
         )
 
     def _check_webdb_catalogue(self) -> None:
-        if self._measurement_active:
+        if self._measurement_active or self._upload_in_progress:
             return
         client = self.client
         if client is None or self.offline_mode:
@@ -1528,6 +1720,91 @@ class MainWindow(QMainWindow):
         self.advanced_dialog.raise_()
         self.advanced_dialog.activateWindow()
 
+    def _begin_measurement_upload(self, payload: dict[str, Any]) -> None:
+        self._pending_upload_payload = payload
+        self._upload_in_progress = True
+        if self._upload_dialog is None:
+            self._upload_dialog = MeasurementUploadDialog(self)
+            self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+        else:
+            self._upload_dialog.begin_new_upload()
+        self._upload_dialog.set_progress(
+            "Preparing measurement upload", None, None,
+            "The measurement remains saved on this computer while it is processed and uploaded.",
+        )
+        self._upload_dialog.show()
+        self._upload_dialog.raise_()
+        self._upload_dialog.activateWindow()
+        self.upload_status_button.setText("Upload in progress")
+        self.upload_status_button.setVisible(True)
+        self._update_run_availability()
+        self._start_measurement_upload_worker(payload)
+
+    def _show_measurement_upload(self) -> None:
+        if self._upload_dialog is None:
+            return
+        self._upload_dialog.show()
+        self._upload_dialog.raise_()
+        self._upload_dialog.activateWindow()
+
+    def _retry_measurement_upload(self) -> None:
+        if self._pending_upload_payload is None:
+            return
+        if self.client is not None and not self.offline_mode:
+            self._pending_upload_payload["client"] = self.client
+        self._upload_in_progress = True
+        self.upload_status_button.setText("Upload in progress")
+        self._upload_dialog.prepare_retry()
+        self._update_run_availability()
+        self._start_measurement_upload_worker(self._pending_upload_payload)
+
+    def _start_measurement_upload_worker(self, payload: dict[str, Any]) -> None:
+        worker = MeasurementUploadWorker(payload)
+        self._upload_worker = worker
+        worker.progress.connect(self._upload_dialog.set_progress)
+        worker.succeeded.connect(self._measurement_upload_succeeded)
+        worker.failed.connect(self._measurement_upload_failed)
+        worker.finished.connect(self._measurement_upload_worker_finished)
+        thread = threading.Thread(target=worker.run, daemon=True, name="measurement-upload")
+        self._upload_thread = thread
+        thread.start()
+
+    def _measurement_upload_succeeded(self, uploaded: object, archive_path: str, graph_path: object) -> None:
+        result = uploaded if isinstance(uploaded, dict) else {}
+        measurement_id = str(result.get("id", "unknown"))
+        self.append_log(
+            f"Measurement uploaded: {measurement_id} "
+            f"({result.get('raw_size_bytes', 0)} bytes, SHA-256 {result.get('raw_sha256', '')})."
+        )
+        self.append_log(f"Measurement finished and archived in WebDB. Local archive: {archive_path}")
+        if graph_path:
+            graph = Path(str(graph_path))
+            self.append_log(f"Local response graph saved: {graph}")
+            self._open_local_file(graph)
+        if self._upload_dialog is not None:
+            self._upload_dialog.show_success(measurement_id, archive_path)
+        self._pending_upload_payload = None
+        self._upload_in_progress = False
+        self.upload_status_button.setVisible(False)
+        self._update_run_availability()
+        QTimer.singleShot(0, self._check_webdb_catalogue)
+
+    def _measurement_upload_failed(self, message: str, archive_path: str) -> None:
+        self.append_log(f"Measurement upload failed: {message}")
+        self.append_log(f"Measurement file remains available locally: {archive_path}")
+        if self._pending_upload_payload is not None:
+            self._pending_upload_payload["raw_log_path"] = archive_path
+        if self._upload_dialog is not None:
+            self._upload_dialog.show_failure(message, archive_path)
+        self._upload_in_progress = False
+        self.upload_status_button.setText("Upload pending · retry")
+        self.upload_status_button.setVisible(True)
+        self._update_run_availability()
+
+    def _measurement_upload_worker_finished(self) -> None:
+        self._upload_worker = None
+        self._upload_thread = None
+
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
             return
@@ -1544,7 +1821,6 @@ class MainWindow(QMainWindow):
             or str(test.get("test_code", "")).upper().startswith("SIMPLE")
         )
 
-        uploaded_to_webdb = False
         create_local_graph = self.local_graphs_checkbox.isChecked()
         try:
             if not self.common_page.joystick_active:
@@ -1581,6 +1857,7 @@ class MainWindow(QMainWindow):
                     config, runtime, participant=participant_code, profile_name=profile_name,
                     log_callback=self.append_log,
                     state_callback=self.led_controller.set_state if self.led_controller else None,
+                    compress_output=self.offline_mode,
                 )
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
                     self.append_log("Measurement cancelled before recording.")
@@ -1588,7 +1865,6 @@ class MainWindow(QMainWindow):
                 raw_path = session.logfile_path
                 if not raw_path:
                     raise RuntimeError("SimPLE did not create a raw log.")
-                analysis = analyze_simple_log(raw_path, started_at=session.started_at)
             else:
                 from thrust.runners.scope_runner import run_scope
                 config = (
@@ -1610,13 +1886,56 @@ class MainWindow(QMainWindow):
                     f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
                 )
                 session = run_scope(config, log_callback=self.append_log,
-                                    state_callback=self.led_controller.set_state if self.led_controller else None)
+                                    state_callback=self.led_controller.set_state if self.led_controller else None,
+                                    compress_output=self.offline_mode)
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
                     self.append_log("Measurement cancelled before recording.")
                     return
                 raw_path = session.logfile_path
                 if not raw_path:
                     raise RuntimeError("Measurement did not create a raw log.")
+
+            if not self.offline_mode:
+                participant_id = self.participant_combo.currentData()
+                if not participant_id:
+                    raise RuntimeError("Participant has no valid WebDB ID.")
+                if self.client is None:
+                    raise RuntimeError("WebDB client is not connected.")
+                session_parameters = config.to_dict()
+                for local_only in ("user", "output_root", "profile_name", "fullscreen", "topmost", "debug_output"):
+                    session_parameters.pop(local_only, None)
+                upload_payload = {
+                    "client": self.client,
+                    "participant_id": str(participant_id),
+                    "participant_code": participant_code,
+                    "test_definition_id": str(test["id"]),
+                    "test": dict(test),
+                    "started_at": session.started_at,
+                    "raw_log_path": raw_path,
+                    "is_simple": is_simple,
+                    "session_parameters": session_parameters,
+                    "runtime": dict(runtime),
+                    "session_summary": {
+                        "completed": getattr(session, "total_completed", 0),
+                        "mistakes": getattr(session, "total_mistakes", 0),
+                        "attempts": getattr(session, "total_attempts", 0),
+                        "timing_schedule_s": getattr(session, "timing_schedule_s", None),
+                        "timing_seed": getattr(session, "timing_seed", None),
+                        "timing_schedule_version": getattr(session, "timing_schedule_version", 1),
+                        "crashes": getattr(session, "crash_count", 0),
+                        "aborted": getattr(session, "aborted", False),
+                        "abort_reason": getattr(session, "abort_reason", ""),
+                    },
+                    "status": "incomplete" if getattr(session, "aborted", False) else "recorded",
+                    "create_local_graph": create_local_graph,
+                }
+                self.append_log("Measurement finished. Compressing and uploading it to WebDB in the background.")
+                self._begin_measurement_upload(upload_payload)
+                return
+
+            if is_simple:
+                analysis = analyze_simple_log(raw_path, started_at=session.started_at)
+            else:
                 analysis = analyze_scope_log(raw_path)
 
             session_parameters = config.to_dict()
@@ -1655,26 +1974,6 @@ class MainWindow(QMainWindow):
                 self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
                 return
 
-            participant_id = self.participant_combo.currentData()
-            if not participant_id:
-                raise RuntimeError("Participant has no valid WebDB ID.")
-            if self.client is None:
-                raise RuntimeError("WebDB client is not connected.")
-
-            uploaded = self.client.upload_measurement(
-                participant_id=str(participant_id),
-                test_definition_id=str(test["id"]),
-                started_at=analysis.get("started_at") or datetime.now(timezone.utc).isoformat(),
-                raw_log_path=raw_path,
-                analysis_data=analysis,
-                status="incomplete" if getattr(session, "aborted", False) else "recorded",
-            )
-            self.append_log(
-                f"Measurement uploaded: {uploaded.get('id', 'unknown')} "
-                f"({uploaded.get('raw_size_bytes', 0)} bytes, SHA-256 {uploaded.get('raw_sha256', '')})."
-            )
-            self.append_log("Measurement finished and archived in WebDB.")
-            uploaded_to_webdb = True
         except Exception as exc:
             self.append_log(f"Measurement failed: {type(exc).__name__}: {exc}")
             QMessageBox.critical(self, "Measurement failed", f"{type(exc).__name__}: {exc}")
@@ -1690,8 +1989,6 @@ class MainWindow(QMainWindow):
                 self._catalogue_check_in_flight = False
                 self._reconnect_in_flight = False
                 self.catalogue_timer.start(5_000)
-                if uploaded_to_webdb:
-                    QTimer.singleShot(0, self._check_webdb_catalogue)
 
     def _open_local_file(self, path: Path) -> None:
         try:
@@ -1750,5 +2047,6 @@ class MainWindow(QMainWindow):
         self.test_button.setVisible(not offline)
         self.local_settings_button.setVisible(offline)
         self.test_row_label.setText("Local settings:" if offline else "Test version:")
+
 
 

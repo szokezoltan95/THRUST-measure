@@ -76,7 +76,7 @@ def init_controller(index: int):
     return controller
 
 
-def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=None) -> ScopeSessionResult:
+def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=None, *, compress_output: bool = True) -> ScopeSessionResult:
     config.validate()
 
     emit_log(config, log_callback, "Validating SCoPE configuration...", debug=True)
@@ -376,7 +376,7 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
             logfile.close()
             logfile = None
 
-        if logfile_path.is_file():
+        if compress_output and logfile_path.is_file():
             logfile_path = compress_raw_log(logfile_path)
             emit_log(config, log_callback, f"Compressed SCoPE raw log: {logfile_path}")
 
@@ -421,3 +421,4 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
             pygame.quit()
         except Exception:
             pass
+

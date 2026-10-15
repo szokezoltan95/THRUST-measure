@@ -67,6 +67,7 @@ def run_simple_session(
     profile_name: str,
     log_callback: Callable[[str], None] | None = None,
     state_callback: Callable[[str], None] | None = None,
+    compress_output: bool = True,
 ) -> SimpleSessionResult:
     config.validate()
     if not pygame.get_init():
@@ -203,9 +204,10 @@ def run_simple_session(
         finally:
             pygame.joystick.quit()
             pygame.quit()
-    logfile_path = compress_raw_log(logfile_path)
-    if log_callback:
-        log_callback(f"Compressed SimPLE raw log: {logfile_path}")
+    if compress_output:
+        logfile_path = compress_raw_log(logfile_path)
+        if log_callback:
+            log_callback(f"Compressed SimPLE raw log: {logfile_path}")
     duration = max(0.0, time.monotonic() - started_monotonic)
     if log_callback:
         log_callback(f"SimPLE finished: completed={completed}, timed out={timed_out}, resets={reset_count}, crashes={crash_count}.")
@@ -220,3 +222,4 @@ def run_simple_session(
         samples=samples,
         aborted=aborted,
     )
+
