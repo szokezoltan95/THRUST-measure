@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QPushButton, QCheckBox, QScrollArea, QVBoxLayout, QWidget,
 )
 from thrust.ui.led_settings_dialog import LedSettingsDialog
-from thrust.tx16smk3_led import LedStyle
+from thrust.tx16smk3_led import LedStyle, MODE_STATIC
 
 
 CHANNELS = ("LX", "LY", "RX", "RY", "BREAK", "RESET")
@@ -48,7 +48,8 @@ class AxisMeter(QWidget):
 
 class AxisAssignmentDialog(QDialog):
     def __init__(self, common_page, mapping: dict[str, int], parent: QWidget,
-                 led_enabled: bool = False, led_styles: dict[str, LedStyle] | None = None) -> None:
+                 led_enabled: bool = False, led_styles: dict[str, LedStyle] | None = None,
+                 led_mode: str = MODE_STATIC, led_refresh_hz: int = 30) -> None:
         super().__init__(parent)
         self.common_page = common_page
         self.mapping = dict(mapping)
@@ -56,6 +57,8 @@ class AxisAssignmentDialog(QDialog):
         self.meters: list[AxisMeter] = []
         self.value_labels: list[QLabel] = []
         self.led_styles = dict(led_styles or {})
+        self.led_mode = led_mode
+        self.led_refresh_hz = max(1, min(200, int(led_refresh_hz)))
         self.setWindowTitle("Configure joystick")
         self.resize(700, 670)
         self.setMinimumWidth(560)
@@ -182,9 +185,13 @@ class AxisAssignmentDialog(QDialog):
         return {role: int(selector.currentData()) for role, selector in self.selectors.items()}
 
     def _configure_lights(self) -> None:
-        dialog = LedSettingsDialog(self.led_styles, self)
+        dialog = LedSettingsDialog(
+            self.led_styles, self, mode=self.led_mode, refresh_hz=self.led_refresh_hz
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.led_styles = dialog.values()
+            self.led_mode = dialog.mode_selector.currentData()
+            self.led_refresh_hz = dialog.refresh_slider.value()
 
     def stop(self) -> None:
         try:
