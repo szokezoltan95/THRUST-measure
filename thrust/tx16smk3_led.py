@@ -40,6 +40,12 @@ def report(command: int, rgb: tuple[int, int, int] = (0, 0, 0)) -> bytes:
     return bytes((0, 1, command, 0, *rgb, 0, 0))
 
 
+def is_tx16smk3_product(product_string: str | None) -> bool:
+    """Match TX16S MK3 product names regardless of spaces or punctuation."""
+    normalized = "".join(char for char in (product_string or "").upper() if char.isalnum())
+    return "TX16SMK3" in normalized
+
+
 def brightness(animation: str, elapsed: float) -> float:
     if animation == "pulse":
         return 0.25 + 0.75 * (1 - math.cos(2 * math.pi * elapsed / 1.8)) / 2
@@ -103,7 +109,7 @@ class LedController:
                     # The VID/PID belongs to all EdgeTX radios. Check the product
                     # string so we never drive a different model's LEDs.
                     candidates = [item for item in hid.enumerate(VID, PID)
-                                  if "TX16SMK3" in (item.get("product_string") or "").upper()
+                                  if is_tx16smk3_product(item.get("product_string"))
                                   and item.get("usage_page") == 0x01
                                   and item.get("usage") in (0x04, 0x05, 0x08)]
                     if not candidates:
