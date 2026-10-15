@@ -54,7 +54,7 @@ from thrust.ui.pages.common_settings_page import CommonSettingsPage
 from thrust.ui.pages.scope_settings_page import ScopeSettingsPage
 from thrust.ui.pages.simple_settings_page import SimpleSettingsPage
 from thrust.ui.axis_assignment_dialog import AxisAssignmentDialog
-from thrust.tx16smk3_led import DEFAULTS, LedController, LedStyle, STATES
+from thrust.tx16smk3_led import DEFAULTS, MODE_STATIC, MODES, LedController, LedStyle, STATES
 from thrust.ui.legacy_import_dialog import LegacyImportDialog
 from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 from thrust.updater import UpdateWorker, current_version, display_version
@@ -444,6 +444,13 @@ class MainWindow(QMainWindow):
                 )
             except ValueError:
                 self.led_styles[state] = LedStyle(color, animation)
+        self.led_mode = str(self.settings.value("lights/mode", MODE_STATIC))
+        if self.led_mode not in MODES:
+            self.led_mode = MODE_STATIC
+        try:
+            self.led_refresh_hz = max(1, min(200, int(self.settings.value("lights/refresh_hz", 30))))
+        except (TypeError, ValueError):
+            self.led_refresh_hz = 30
         self.led_controller: LedController | None = None
         self.led_error.connect(lambda error: self.append_log(f"TX16SMK3 lights: {error}"))
         self.theme_mode = str(self.settings.value("appearance/theme", "system"))
@@ -933,10 +940,17 @@ class MainWindow(QMainWindow):
                 self.led_controller = None
             return
         if self.led_controller is None:
-            self.led_controller = LedController(self.led_styles, on_error=self.led_error.emit)
+            self.led_controller = LedController(
+                self.led_styles,
+                on_error=self.led_error.emit,
+                mode=self.led_mode,
+                refresh_hz=self.led_refresh_hz,
+            )
             self.led_controller.start()
         else:
             self.led_controller.set_styles(self.led_styles)
+            self.led_controller.set_mode(self.led_mode)
+            self.led_controller.set_refresh_hz(self.led_refresh_hz)
         if not self._measurement_active:
             self.led_controller.set_state("ready" if self.run_button.isEnabled() else "idle")
 
@@ -1043,8 +1057,11 @@ class MainWindow(QMainWindow):
 
     def _open_axis_assignment(self) -> None:
         mapping = {role: spin.value() for role, spin in self._axis_spins.items()}
-        dialog = AxisAssignmentDialog(self.common_page, mapping, self,
-                                      self.led_controller is not None, self.led_styles)
+        dialog = AxisAssignmentDialog(
+            self.common_page, mapping, self,
+            self.led_controller is not None, self.led_styles,
+            self.led_mode, self.led_refresh_hz,
+        )
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if dialog.axis_count > 0:
@@ -1058,6 +1075,10 @@ class MainWindow(QMainWindow):
                 for state, style in self.led_styles.items():
                     self.settings.setValue(f"lights/{state}/color", style.color)
                     self.settings.setValue(f"lights/{state}/animation", style.animation)
+                self.led_mode = dialog.led_mode
+                self.led_refresh_hz = dialog.led_refresh_hz
+                self.settings.setValue("lights/mode", self.led_mode)
+                self.settings.setValue("lights/refresh_hz", self.led_refresh_hz)
                 self.settings.setValue("lights/enabled", dialog.lights_enabled.isChecked())
                 self._set_lights_enabled(dialog.lights_enabled.isChecked())
                 self._update_joystick_feedback(self.common_page.latest_axis_values)
@@ -2298,6 +2319,8 @@ class MainWindow(QMainWindow):
                     config, runtime, participant=participant_code, profile_name=profile_name,
                     log_callback=self.append_log,
                     state_callback=self.led_controller.set_state if self.led_controller else None,
+                    tracking_callback=(self.led_controller.set_tracking_vectors
+                                       if self.led_controller else None),
                     compress_output=self.offline_mode,
                 )
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
@@ -2328,6 +2351,8 @@ class MainWindow(QMainWindow):
                 )
                 session = run_scope(config, log_callback=self.append_log,
                                     state_callback=self.led_controller.set_state if self.led_controller else None,
+                                    tracking_callback=(self.led_controller.set_tracking_vectors
+                                                       if self.led_controller else None),
                                     compress_output=self.offline_mode)
                 if getattr(session, "aborted", False) and not getattr(session, "samples", 0):
                     self.append_log("Measurement cancelled before recording.")
