@@ -69,50 +69,100 @@ class MeasurementUploadDialog(QDialog):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Measurement upload")
-        self.setMinimumSize(500, 360)
+        self.setWindowTitle("WebDB connection details")
+        self.setMinimumSize(560, 500)
         self.setWindowModality(Qt.WindowModality.NonModal)
 
-        self.stage_label = QLabel("Preparing measurement upload…")
-        self.stage_label.setObjectName("appTitle")
-        self.detail_label = QLabel("The measurement is safely stored locally while it is prepared.")
+        self.webdb_status_label = QLabel("● WebDB DISCONNECTED · Offline mode")
+        self.webdb_status_label.setStyleSheet("font-weight: 600; color: #d34852;")
+        self.last_refresh_label = QLabel("Last refresh: never")
+        self.last_refresh_label.setStyleSheet("color: #808080;")
+        self.disconnect_button = QPushButton("Disconnect")
+        self.disconnect_button.clicked.connect(self.disconnect_requested.emit)
+        self.disconnect_button.setVisible(False)
+        connection_header = QHBoxLayout()
+        connection_text = QVBoxLayout()
+        connection_text.setSpacing(2)
+        connection_text.addWidget(self.webdb_status_label)
+        connection_text.addWidget(self.last_refresh_label)
+        connection_header.addLayout(connection_text, 1)
+        connection_header.addWidget(self.disconnect_button, 0, Qt.AlignmentFlag.AlignTop)
+        connection_box = QGroupBox("WebDB connection")
+        connection_box_layout = QVBoxLayout(connection_box)
+        connection_box_layout.addLayout(connection_header)
+
+        self.queue_status_label = QLabel("No uploads waiting")
+        self.queue_status_label.setWordWrap(True)
+        queue_box = QGroupBox("Upload queue")
+        queue_box_layout = QVBoxLayout(queue_box)
+        queue_box_layout.addWidget(self.queue_status_label)
+
+        self.stage_label = QLabel("No active task")
+        task_font = self.stage_label.font()
+        task_font.setPointSize(max(10, task_font.pointSize() + 1))
+        task_font.setBold(True)
+        self.stage_label.setFont(task_font)
+        self.detail_label = QLabel("The application is idle.")
         self.detail_label.setWordWrap(True)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.activity_log = QPlainTextEdit()
-        self.activity_log.setReadOnly(True)
-        self.activity_log.setMinimumHeight(160)
         self.archive_label = QLabel()
         self.archive_label.setWordWrap(True)
         self.archive_label.setVisible(False)
+        task_box = QGroupBox("Current task")
+        task_box_layout = QVBoxLayout(task_box)
+        task_box_layout.addWidget(self.stage_label)
+        task_box_layout.addWidget(self.detail_label)
+        task_box_layout.addWidget(self.progress_bar)
+        task_box_layout.addWidget(self.archive_label)
+
+        log_title = QLabel("Activity log")
+        self.activity_log = QPlainTextEdit()
+        self.activity_log.setReadOnly(True)
+        self.activity_log.setMinimumHeight(100)
+        self.activity_log.setMaximumBlockCount(500)
 
         self.retry_button = QPushButton("Retry upload")
         self.retry_button.setVisible(False)
         self.retry_button.clicked.connect(self.retry_requested.emit)
-        self.disconnect_button = QPushButton("Disconnect")
-        self.disconnect_button.clicked.connect(self.disconnect_requested.emit)
         self.close_button = QPushButton("Close")
         self.close_button.setEnabled(False)
         self.close_button.clicked.connect(self.accept)
         buttons = QHBoxLayout()
         buttons.addStretch()
-        buttons.addWidget(self.disconnect_button)
         buttons.addWidget(self.retry_button)
         buttons.addWidget(self.close_button)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self.stage_label)
-        layout.addWidget(self.detail_label)
-        layout.addWidget(self.progress_bar)
+        layout.setSpacing(8)
+        layout.addWidget(connection_box)
+        layout.addWidget(queue_box)
+        layout.addWidget(task_box)
+        layout.addWidget(log_title)
         layout.addWidget(self.activity_log, 1)
-        layout.addWidget(self.archive_label)
         layout.addLayout(buttons)
         self._last_stage = ""
 
     def set_connection_controls(self, connected: bool, disconnect_enabled: bool = True) -> None:
         self.disconnect_button.setVisible(connected)
         self.disconnect_button.setEnabled(disconnect_enabled)
+
+    def set_webdb_status(self, text: str, severity: str, last_refresh: datetime | None) -> None:
+        self.webdb_status_label.setText(text)
+        colors = {"good": "#159653", "warning": "#b97911", "error": "#d34852", "active": "#2d8cff", "neutral": "#808080"}
+        self.webdb_status_label.setStyleSheet(f"font-weight: 600; color: {colors.get(severity, colors['neutral'])};")
+        refreshed = last_refresh.astimezone().strftime("%Y-%m-%d %H:%M:%S") if last_refresh else "never"
+        self.last_refresh_label.setText(f"Last refresh: {refreshed}")
+
+    def set_upload_queue_status(self, text: str, severity: str = "neutral") -> None:
+        self.queue_status_label.setText(text)
+        colors = {"good": "#159653", "warning": "#b97911", "error": "#d34852", "active": "#2d8cff", "neutral": "#808080"}
+        self.queue_status_label.setStyleSheet(f"color: {colors.get(severity, colors['neutral'])};")
+
+    def set_current_task(self, stage: str, detail: str) -> None:
+        self.stage_label.setText(stage)
+        self.detail_label.setText(detail)
 
     def add_detail(self, message: str) -> None:
         self.activity_log.appendPlainText(f"[{datetime.now().astimezone():%H:%M:%S}] {message}")
@@ -168,13 +218,13 @@ class MeasurementUploadDialog(QDialog):
         self._last_stage = ""
 
     def begin_new_upload(self) -> None:
-        self.activity_log.clear()
         self.retry_button.setVisible(False)
         self.close_button.setEnabled(False)
         self.archive_label.setVisible(False)
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Preparing…")
+        self.add_detail("A new upload task has started.")
         self._last_stage = ""
 
     def show_failure(self, message: str, archive_path: str, receipt: dict[str, Any] | None = None) -> None:
@@ -402,6 +452,7 @@ class MainWindow(QMainWindow):
         self._system_palette = QApplication.palette()
 
         self.client: WebDbClient | None = None
+        self._webdb_last_refresh: datetime | None = None
         self.current_manifest: dict[str, Any] | None = None
         self.available_tests: list[dict[str, Any]] = []
         self.offline_mode = True
@@ -1343,6 +1394,42 @@ class MainWindow(QMainWindow):
             f"Open activity details · {queued_count} measurement(s) in the persistent upload queue."
             if queued_count else "Open recent processing details."
         )
+        self._refresh_details_status()
+
+    def _refresh_details_status(self) -> None:
+        dialog = self._upload_dialog
+        if dialog is None:
+            return
+        connected = not self.offline_mode and self.client is not None
+        dialog.set_connection_controls(
+            connected, not self._measurement_active and not self._upload_in_progress
+        )
+        if not connected:
+            webdb_text, webdb_severity = "● WebDB DISCONNECTED · Offline mode", "error"
+        elif not self._catalogue_connection_ok:
+            webdb_text, webdb_severity = "● WebDB UNREACHABLE · retrying", "warning"
+        else:
+            identity = (self.client.account or {}).get("participant_code") if self.client.role == "student" else (self.client.account or {}).get("username", "")
+            webdb_text, webdb_severity = f"● WebDB CONNECTED · {identity}", "good"
+        dialog.set_webdb_status(webdb_text, webdb_severity, self._webdb_last_refresh)
+
+        queued_count = len(self._upload_queue.pending())
+        if self._upload_in_progress:
+            queue_text = f"Upload in progress · {queued_count} measurement(s) currently in the persistent queue."
+            queue_severity = "active"
+        elif queued_count:
+            queue_text = (
+                f"{queued_count} measurement(s) saved locally and waiting for upload."
+                if connected else f"{queued_count} measurement(s) saved locally; waiting for a WebDB connection."
+            )
+            queue_severity = "warning"
+        else:
+            queue_text, queue_severity = "All measurements uploaded · no pending items.", "good"
+        dialog.set_upload_queue_status(queue_text, queue_severity)
+
+        if self._measurement_active and not self._upload_in_progress:
+            stage = self._upload_activity_stage or "Measurement running"
+            dialog.set_current_task(stage, "Measurement is in progress. Upload begins after analysis and local files are saved.")
 
     def _update_activity_progress(self, stage: str, _current: object, _total: object, _detail: str) -> None:
         self._upload_activity_stage = stage
@@ -1365,6 +1452,7 @@ class MainWindow(QMainWindow):
             self._upload_dialog.set_connection_controls(
                 connected, not self._measurement_active and not self._upload_in_progress
             )
+            self._refresh_details_status()
 
     def _measurement_mode_changed(self, _index: int = 0) -> None:
         self._update_joystick_feedback(self.common_page.latest_axis_values)
@@ -1546,6 +1634,7 @@ class MainWindow(QMainWindow):
             self.available_tests = [test for test in tests if test.get("is_active", False)]
             self.offline_mode = False
             self._catalogue_connection_ok = True
+            self._webdb_last_refresh = datetime.now().astimezone()
             self.config_source_combo.setCurrentIndex(0)
             self._refresh_test_choices()
             self._sync_selection_labels()
@@ -1707,6 +1796,7 @@ class MainWindow(QMainWindow):
         self._catalogue_generation += 1
         self._catalogue_connection_ok = True
         self.offline_mode = False
+        self._webdb_last_refresh = datetime.now().astimezone()
         self.config_source_combo.setCurrentIndex(0)
         self.participant_combo.clear()
         if client.role == "student":
@@ -1740,13 +1830,16 @@ class MainWindow(QMainWindow):
             self._catalogue_connection_ok = False
             self._set_connection_state("warning")
             self.connection_status.setText("● WebDB UNREACHABLE · retrying")
+            self._refresh_activity_status()
             self.append_log(f"WebDB periodic check failed: {error}")
             self._update_run_availability()
             return
         self._catalogue_connection_ok = True
+        self._webdb_last_refresh = datetime.now().astimezone()
         self._set_connection_state("connected")
         identity = (client.account or {}).get("participant_code") if client.role == "student" else (client.account or {}).get("username", "")
         self.connection_status.setText(f"● WebDB CONNECTED · {identity}")
+        self._refresh_activity_status()
         tests, participants = result
         active = [test for test in tests if test.get("is_active", False)]
         if participants is not None:
@@ -2367,6 +2460,8 @@ class MainWindow(QMainWindow):
             compact = compact[:147] + "…"
         self.footer_log_label.setText(f"{now:%H:%M:%S} · {compact}")
         self.footer_log_label.setToolTip(entry)
+        if self._upload_dialog is not None:
+            self._upload_dialog.add_detail(message)
 
     def _open_logs(self) -> None:
         if self.log_dialog is None:
