@@ -76,7 +76,8 @@ def init_controller(index: int):
     return controller
 
 
-def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=None, *, compress_output: bool = True) -> ScopeSessionResult:
+def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=None,
+                      tracking_callback=None, *, compress_output: bool = True) -> ScopeSessionResult:
     config.validate()
 
     emit_log(config, log_callback, "Validating SCoPE configuration...", debug=True)
@@ -311,6 +312,14 @@ def run_scope_session(config: ScopeConfig, log_callback=None, state_callback=Non
 
                 if state_callback:
                     state_callback("in_zone" if in_range else "out_of_zone")
+                if tracking_callback:
+                    tracking_callback(
+                        (action_request[0] - mapped[0], action_request[1] - mapped[1]),
+                        (action_request[3] - mapped[3], action_request[2] - mapped[2]),
+                        stick_max,
+                        (deadzone[0], deadzone[1]),
+                        (deadzone[3], deadzone[2]),
+                    )
 
                 if not task_success and in_range and full_since_ns[0] is not None and sample_time - full_since_ns[0] >= hold_ns:
                     task_success = True
