@@ -60,6 +60,7 @@ from thrust.webdb_client import DEFAULT_WEBDB_URL, WebDbClient, WebDbError
 from thrust.updater import UpdateWorker, current_version, display_version
 from thrust.joystick_profiles import joystick_profile_key
 from thrust.raw_compression import compress_raw_log
+from thrust.upload_queue import MeasurementUploadQueue
 
 
 class MeasurementUploadDialog(QDialog):
@@ -131,6 +132,19 @@ class MeasurementUploadDialog(QDialog):
         self.add_detail("Starting a new upload attempt.")
         self._last_stage = ""
 
+    def show_waiting_for_connection(self, participant: str, test: str) -> None:
+        self.stage_label.setText("Upload waiting for WebDB connection")
+        self.detail_label.setText(
+            f"A measurement is safely queued on this computer. Connect to WebDB to upload it.\n"
+            f"Participant: {participant or '—'}\nTest: {test or '—'}"
+        )
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Waiting for connection")
+        self.retry_button.setVisible(False)
+        self.close_button.setEnabled(True)
+        self._last_stage = ""
+
     def begin_new_upload(self) -> None:
         self.activity_log.clear()
         self.retry_button.setVisible(False)
@@ -154,9 +168,18 @@ class MeasurementUploadDialog(QDialog):
         self.add_detail(f"Upload failed: {message}")
         self.add_detail(f"Local measurement file preserved: {archive_path}")
 
-    def show_success(self, measurement_id: str, archive_path: str) -> None:
+    def show_success(self, measurement_id: str, archive_path: str, receipt: dict[str, Any] | None = None) -> None:
         self.stage_label.setText("Measurement stored in WebDB")
-        self.detail_label.setText(f"WebDB confirmed the upload. Measurement ID: {measurement_id}")
+        receipt = receipt or {}
+        summary = receipt.get("session_summary", {})
+        result_lines = [f"Participant: {receipt.get('participant_code', '—')}",
+                        f"Test: {receipt.get('test_label', '—')}",
+                        f"Started: {receipt.get('started_at', '—')}",
+                        f"Completed tasks: {summary.get('completed', '—')}",
+                        f"Mistakes: {summary.get('mistakes', '—')}",
+                        f"Status: {'incomplete' if summary.get('aborted') else 'completed'}",
+                        f"WebDB measurement ID: {measurement_id}"]
+        self.detail_label.setText("\n".join(result_lines))
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(1000)
         self.progress_bar.setFormat("Complete")
@@ -190,6 +213,11 @@ class MeasurementUploadWorker(QObject):
                 ),
             )
             self.local_path = str(archive_path)
+            queue_id = self.payload.get("queue_id")
+            if queue_id:
+                MeasurementUploadQueue().update(
+                    str(queue_id), raw_log_path=self.local_path, queue_status="uploading"
+                )
             self.progress.emit("Analyzing measurement", None, None, "Preparing the measurement results and metadata.")
             if self.payload["is_simple"]:
                 analysis = analyze_simple_log(archive_path, started_at=self.payload["started_at"])
@@ -355,6 +383,11 @@ class MainWindow(QMainWindow):
         self._upload_worker: MeasurementUploadWorker | None = None
         self._upload_thread: threading.Thread | None = None
         self._pending_upload_payload: dict[str, Any] | None = None
+        self._upload_retry_attempt = 0
+        self._upload_queue = MeasurementUploadQueue()
+        queued_uploads = self._upload_queue.pending()
+        if queued_uploads:
+            self._pending_upload_payload = queued_uploads[0]
         self._measurement_lock = threading.Lock()
         self._remote_disconnect_requested = False
         self._presence_stop_event: threading.Event | None = None
@@ -578,6 +611,9 @@ class MainWindow(QMainWindow):
         self.upload_status_button.setObjectName("logsButton")
         self.upload_status_button.setVisible(False)
         self.upload_status_button.clicked.connect(self._show_measurement_upload)
+        if self._pending_upload_payload is not None:
+            self.upload_status_button.setText("Upload waiting · connect to WebDB")
+            self.upload_status_button.setVisible(True)
         title_row.addWidget(self.upload_status_button)
         self.appearance_button = QToolButton()
         self.appearance_button.setObjectName("appearanceButton")
@@ -1306,6 +1342,8 @@ class MainWindow(QMainWindow):
             self.append_log(f"Loaded {len(tests)} active tests for {role or 'user'}.")
             self._load_selected_test()
             self._start_presence_reporting()
+            if self._pending_upload_payload is not None:
+                QTimer.singleShot(0, self._resume_pending_upload)
 
         except (WebDbError, KeyError, ValueError) as exc:
             self.append_log(f"WebDB connection failed: {exc}")
@@ -1721,6 +1759,8 @@ class MainWindow(QMainWindow):
         self.advanced_dialog.activateWindow()
 
     def _begin_measurement_upload(self, payload: dict[str, Any]) -> None:
+        if not payload.get("queue_id"):
+            payload["queue_id"] = self._upload_queue.enqueue(payload)
         self._pending_upload_payload = payload
         self._upload_in_progress = True
         if self._upload_dialog is None:
@@ -1742,7 +1782,14 @@ class MainWindow(QMainWindow):
 
     def _show_measurement_upload(self) -> None:
         if self._upload_dialog is None:
-            return
+            if self._pending_upload_payload is None:
+                return
+            self._upload_dialog = MeasurementUploadDialog(self)
+            self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+            self._upload_dialog.show_waiting_for_connection(
+                str(self._pending_upload_payload.get("participant_code", "")),
+                str(self._pending_upload_payload.get("test_label", "")),
+            )
         self._upload_dialog.show()
         self._upload_dialog.raise_()
         self._upload_dialog.activateWindow()
@@ -1757,6 +1804,43 @@ class MainWindow(QMainWindow):
         self._upload_dialog.prepare_retry()
         self._update_run_availability()
         self._start_measurement_upload_worker(self._pending_upload_payload)
+
+    def _resume_pending_upload(self) -> None:
+        payload = self._pending_upload_payload
+        if payload is None or self.client is None or self.offline_mode or self._upload_in_progress:
+            return
+        archive = Path(str(payload.get("raw_log_path", "")))
+        if not archive.is_file():
+            compressed_fallback = archive.with_name(archive.name + ".gz")
+            if compressed_fallback.is_file():
+                archive = compressed_fallback
+                payload["raw_log_path"] = str(archive)
+                queue_id = payload.get("queue_id")
+                if queue_id:
+                    self._upload_queue.update(str(queue_id), raw_log_path=str(archive))
+            else:
+                self._measurement_upload_failed(f"Queued measurement file is missing: {archive}", str(archive))
+                return
+        payload["client"] = self.client
+        self._upload_in_progress = True
+        self.upload_status_button.setText("Resuming pending upload")
+        self.upload_status_button.setVisible(True)
+        if self._upload_dialog is None:
+            self._upload_dialog = MeasurementUploadDialog(self)
+            self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+        self._upload_dialog.begin_new_upload()
+        self._upload_dialog.set_progress(
+            "Resuming pending upload", None, None,
+            "A saved measurement was found. Uploading it now that WebDB is connected.",
+        )
+        self._upload_dialog.show()
+        self._start_measurement_upload_worker(payload)
+
+    def _retry_queued_upload_if_connected(self) -> None:
+        if (self._pending_upload_payload is None or self._upload_in_progress
+                or self.client is None or self.offline_mode):
+            return
+        self._retry_measurement_upload()
 
     def _start_measurement_upload_worker(self, payload: dict[str, Any]) -> None:
         worker = MeasurementUploadWorker(payload)
@@ -1781,11 +1865,21 @@ class MainWindow(QMainWindow):
             graph = Path(str(graph_path))
             self.append_log(f"Local response graph saved: {graph}")
             self._open_local_file(graph)
+        queue_id = self._pending_upload_payload.get("queue_id") if self._pending_upload_payload else None
+        if queue_id:
+            self._upload_queue.remove(str(queue_id))
+        self._upload_retry_attempt = 0
         if self._upload_dialog is not None:
-            self._upload_dialog.show_success(measurement_id, archive_path)
-        self._pending_upload_payload = None
+            self._upload_dialog.show_success(measurement_id, archive_path, self._pending_upload_payload)
+        remaining = self._upload_queue.pending()
+        self._pending_upload_payload = remaining[0] if remaining else None
         self._upload_in_progress = False
-        self.upload_status_button.setVisible(False)
+        if self._pending_upload_payload is not None:
+            self.upload_status_button.setText(f"Upload queue · {len(remaining)} remaining")
+            self.upload_status_button.setVisible(True)
+            QTimer.singleShot(2500, self._resume_pending_upload)
+        else:
+            self.upload_status_button.setVisible(False)
         self._update_run_availability()
         QTimer.singleShot(0, self._check_webdb_catalogue)
 
@@ -1794,19 +1888,88 @@ class MainWindow(QMainWindow):
         self.append_log(f"Measurement file remains available locally: {archive_path}")
         if self._pending_upload_payload is not None:
             self._pending_upload_payload["raw_log_path"] = archive_path
+            queue_id = self._pending_upload_payload.get("queue_id")
+            if queue_id:
+                self._upload_queue.update(
+                    str(queue_id), raw_log_path=archive_path, queue_status="failed", last_error=message
+                )
         if self._upload_dialog is not None:
             self._upload_dialog.show_failure(message, archive_path)
         self._upload_in_progress = False
         self.upload_status_button.setText("Upload pending · retry")
         self.upload_status_button.setVisible(True)
         self._update_run_availability()
+        if self.client is not None and not self.offline_mode:
+            delay_seconds = min(30 * (2 ** self._upload_retry_attempt), 300)
+            self._upload_retry_attempt += 1
+            QTimer.singleShot(delay_seconds * 1000, self._retry_queued_upload_if_connected)
 
     def _measurement_upload_worker_finished(self) -> None:
         self._upload_worker = None
         self._upload_thread = None
 
+    def _confirm_measurement_preflight(self) -> bool:
+        if not self.common_page.joystick_active:
+            QMessageBox.warning(self, "Pre-measurement check", "Connect a joystick before starting a measurement.")
+            return False
+        if not self.offline_mode and (not self._catalogue_connection_ok or not self.participant_combo.currentData()):
+            QMessageBox.warning(self, "Pre-measurement check", "Connect to WebDB and select a valid participant.")
+            return False
+        if self.current_manifest is None or (not self.offline_mode and self.test_combo.currentIndex() < 0):
+            QMessageBox.warning(self, "Pre-measurement check", "Select a test version before starting.")
+            return False
+
+        joystick = self.common_page.joystick
+        try:
+            axis_count = int(joystick.get_numaxes()) if joystick is not None else 0
+        except Exception:
+            axis_count = 0
+        mapped = {role: int(spin.value()) for role, spin in self._axis_spins.items() if role in {"LX", "LY", "RX", "RY"}}
+        invalid = [role for role, index in mapped.items() if index < 0 or index >= axis_count]
+        duplicates = len(set(mapped.values())) != len(mapped)
+        if invalid or duplicates:
+            detail = "Joystick axis mapping is invalid. Open Configure joystick and check LX, LY, RX and RY."
+            if invalid:
+                detail += f" Invalid axes: {', '.join(invalid)}."
+            if duplicates:
+                detail += " Two or more gimbal directions use the same joystick axis."
+            QMessageBox.warning(self, "Pre-measurement check", detail)
+            return False
+
+        axes_text = "\n".join(f"{role} → joystick axis {index + 1}" for role, index in mapped.items())
+        break_axis = self.common_page.break_axis_spin.value()
+        reset_axis = self.common_page.reset_axis_spin.value()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pre-measurement check")
+        dialog.setMinimumWidth(470)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(
+            f"Participant: {self.participant_combo.currentText().strip() or 'LOCAL'}\n"
+            f"Test: {self.test_combo.currentText()}\n"
+            f"Joystick: {self.joystick_selector.currentText()}\n\n"
+            f"Axis mapping:\n{axes_text}\n"
+            f"BREAK: {'axis ' + str(break_axis + 1) if break_axis >= 0 else 'not assigned'} · "
+            f"RESET: {'axis ' + str(reset_axis + 1) if reset_axis >= 0 else 'not assigned'}\n\n"
+            "Move each stick direction and check the live axis bars in the main window. "
+            "Confirm BREAK and RESET controls if assigned, and make sure the area is clear."
+        ))
+        confirmed = QCheckBox("I checked the joystick directions and measurement controls")
+        layout.addWidget(confirmed)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Start measurement")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+        confirmed.toggled.connect(buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
+            return
+        if not self._confirm_measurement_preflight():
             return
         with self._measurement_lock:
             if self._remote_disconnect_requested:
@@ -1928,6 +2091,7 @@ class MainWindow(QMainWindow):
                     },
                     "status": "incomplete" if getattr(session, "aborted", False) else "recorded",
                     "create_local_graph": create_local_graph,
+                    "test_label": f"{test.get('test_code', 'Test')} v{test.get('version', '')}",
                 }
                 self.append_log("Measurement finished. Compressing and uploading it to WebDB in the background.")
                 self._begin_measurement_upload(upload_payload)
@@ -1972,6 +2136,17 @@ class MainWindow(QMainWindow):
 
             if self.offline_mode:
                 self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
+                message = (
+                    f"Participant: {participant_code}\n"
+                    f"Test: {profile_name}\n"
+                    f"Started: {session.started_at}\n"
+                    f"Completed tasks: {getattr(session, 'total_completed', 0)}\n"
+                    f"Mistakes: {getattr(session, 'total_mistakes', 0)}\n"
+                    f"Status: {'incomplete' if getattr(session, 'aborted', False) else 'completed'}\n\n"
+                    f"Local measurement file:\n{raw_path}\n\n"
+                    f"Analysis file:\n{analysis_path}"
+                )
+                QMessageBox.information(self, "Measurement receipt", message)
                 return
 
         except Exception as exc:
