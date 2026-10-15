@@ -1950,8 +1950,9 @@ class MainWindow(QMainWindow):
             f"Axis mapping:\n{axes_text}\n"
             f"BREAK: {'axis ' + str(break_axis + 1) if break_axis >= 0 else 'not assigned'} · "
             f"RESET: {'axis ' + str(reset_axis + 1) if reset_axis >= 0 else 'not assigned'}\n\n"
-            "Move each stick direction and check the live axis bars in the main window. "
-            "Confirm BREAK and RESET controls if assigned, and make sure the area is clear."
+            "If the directions or controls have not been verified yet, cancel and check them "
+            "using the live joystick indicators in the main window. Confirm BREAK and RESET "
+            "controls if assigned, and make sure the measurement area is clear."
         ))
         confirmed = QCheckBox("I checked the joystick directions and measurement controls")
         layout.addWidget(confirmed)
