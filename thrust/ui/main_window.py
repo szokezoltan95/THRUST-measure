@@ -1904,13 +1904,17 @@ class MainWindow(QMainWindow):
                 self._upload_queue.update(
                     str(queue_id), raw_log_path=archive_path, queue_status="failed", last_error=message
                 )
-        if self._upload_dialog is not None:
-            self._upload_dialog.show_failure(message, archive_path, self._pending_upload_payload)
+        if self._upload_dialog is None:
+            self._upload_dialog = MeasurementUploadDialog(self)
+            self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
+        self._upload_dialog.show_failure(message, archive_path, self._pending_upload_payload)
+        self._upload_dialog.show()
+        self._upload_dialog.raise_()
         self._upload_in_progress = False
         self.upload_status_button.setText("Upload pending · retry")
         self.upload_status_button.setVisible(True)
         self._update_run_availability()
-        if self.client is not None and not self.offline_mode:
+        if self.client is not None and not self.offline_mode and Path(archive_path).is_file():
             delay_seconds = min(30 * (2 ** self._upload_retry_attempt), 300)
             self._upload_retry_attempt += 1
             QTimer.singleShot(delay_seconds * 1000, self._retry_queued_upload_if_connected)
