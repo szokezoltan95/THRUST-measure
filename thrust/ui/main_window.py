@@ -1238,9 +1238,9 @@ class MainWindow(QMainWindow):
             complete_count = sum(
                 self._joystick_axes_tested([role]) for role in required_axes
             )
-            joystick_text = f"JOYSTICK · TEST {complete_count}/{len(required_axes)}"
+            joystick_text = f"JOYSTICK · PERFORM TEST ({complete_count}/{len(required_axes)})"
             joystick_error, joystick_state = joystick_text, "warning"
-            self.joystick_button.setText(f"{self._connected_joystick_name()} · PERFORM JOYSTICK TEST")
+            self.joystick_button.setText(self._connected_joystick_name())
             self.joystick_button.setProperty("state", "testing")
             joystick_tooltip = "Move every listed axis to its negative and positive limits. The bars turn blue when verified."
         else:
@@ -1455,7 +1455,7 @@ class MainWindow(QMainWindow):
                 if isinstance(device_index, int) and 0 <= device_index < len(self.joystick_device_names)
                 else "Joystick"
             )
-        self.joystick_button.setText(f"{device_name} · PERFORM JOYSTICK TEST") if connected else self.joystick_button.setText("Select Joystick · DISCONNECTED")
+        self.joystick_button.setText(device_name if connected else "Select Joystick · DISCONNECTED")
         self.joystick_button.setProperty("state", "testing" if connected else "disconnected")
         self.joystick_button.style().unpolish(self.joystick_button)
         self.joystick_button.style().polish(self.joystick_button)
@@ -1497,11 +1497,7 @@ class MainWindow(QMainWindow):
                 bar.setProperty("axisTestState", state)
                 bar.style().unpolish(bar)
                 bar.style().polish(bar)
-            if role in required_axes:
-                reached = self._axis_test_extremes[role]
-                label_text = f"{role}  {'−✓' if 'negative' in reached else '−○'} {'+✓' if 'positive' in reached else '+○'}"
-            else:
-                label_text = role
+            label_text = role
             if self.axis_labels[role].text() != label_text:
                 self.axis_labels[role].setText(label_text)
         if progress_changed and hasattr(self, "run_button"):
