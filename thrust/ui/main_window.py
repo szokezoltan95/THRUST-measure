@@ -70,7 +70,7 @@ class MeasurementUploadDialog(QDialog):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("WebDB connection details")
-        self.setMinimumSize(560, 500)
+        self.setFixedSize(620, 520)
         self.setWindowModality(Qt.WindowModality.NonModal)
 
         self.webdb_status_label = QLabel("● WebDB DISCONNECTED · Offline mode")
@@ -103,7 +103,7 @@ class MeasurementUploadDialog(QDialog):
         task_font.setBold(True)
         self.stage_label.setFont(task_font)
         self.detail_label = QLabel("The application is idle.")
-        self.detail_label.setWordWrap(True)
+        self.detail_label.setWordWrap(False)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
@@ -164,14 +164,21 @@ class MeasurementUploadDialog(QDialog):
         self.stage_label.setText(stage)
         self.detail_label.setText(detail)
 
+    def set_measurement_context(self, participant: str, test: str, created_at: object) -> None:
+        value = str(created_at or "")
+        try:
+            stamp = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            stamp = value[:19] or "—"
+        self.detail_label.setText(f"{participant or '—'} · {test or '—'} · {stamp}")
+
     def add_detail(self, message: str) -> None:
         self.activity_log.appendPlainText(f"[{datetime.now().astimezone():%H:%M:%S}] {message}")
 
     def set_progress(self, stage: str, current: int | None, total: int | None, detail: str) -> None:
         self.stage_label.setText(stage)
-        self.detail_label.setText(detail)
         if stage != self._last_stage:
-            self.add_detail(stage)
+            self.add_detail(f"{stage}.")
             self._last_stage = stage
         if current is None or total is None or total <= 0:
             self.progress_bar.setRange(0, 0)
@@ -190,12 +197,9 @@ class MeasurementUploadDialog(QDialog):
         self.add_detail("Starting a new upload attempt.")
         self._last_stage = ""
 
-    def show_waiting_for_connection(self, participant: str, test: str) -> None:
-        self.stage_label.setText("Upload waiting for WebDB connection")
-        self.detail_label.setText(
-            f"A measurement is safely queued on this computer. Connect to WebDB to upload it.\n"
-            f"Participant: {participant or '—'}\nTest: {test or '—'}"
-        )
+    def show_waiting_for_connection(self, participant: str, test: str, created_at: object = "") -> None:
+        self.stage_label.setText("Waiting for WebDB")
+        self.set_measurement_context(participant, test, created_at)
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Waiting for connection")
@@ -204,11 +208,11 @@ class MeasurementUploadDialog(QDialog):
         self._last_stage = ""
 
     def show_idle(self, queued_count: int = 0) -> None:
-        self.stage_label.setText("No active processing")
-        self.detail_label.setText(
-            "The application is idle." if not queued_count
-            else f"{queued_count} measurement(s) are saved in the local upload queue and await a WebDB connection."
-        )
+        self.stage_label.setText("No active task")
+        if queued_count:
+            self.detail_label.setText(f"Last measurement · {queued_count} upload(s) pending")
+        else:
+            self.detail_label.setText("No active task")
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Idle" if not queued_count else "Waiting for WebDB")
@@ -228,49 +232,35 @@ class MeasurementUploadDialog(QDialog):
         self._last_stage = ""
 
     def show_failure(self, message: str, archive_path: str, receipt: dict[str, Any] | None = None) -> None:
-        self.stage_label.setText("Upload could not be completed")
         receipt = receipt or {}
-        summary = receipt.get("session_summary", {})
-        details = [message]
-        if receipt:
-            details.extend([
-                f"Participant: {receipt.get('participant_code', '—')}",
-                f"Test: {receipt.get('test_label', '—')}",
-                f"Started: {receipt.get('started_at', '—')}",
-                f"Completed tasks: {summary.get('completed', '—')} · mistakes: {summary.get('mistakes', '—')}",
-                f"Status: {'incomplete' if summary.get('aborted') else 'completed'}",
-            ])
-        self.detail_label.setText("\n".join(details))
+        self.stage_label.setText("Upload failed · file kept locally")
+        self.set_measurement_context(
+            str(receipt.get("participant_code", "")),
+            str(receipt.get("test_label", "")), receipt.get("started_at", ""),
+        )
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Upload failed")
-        self.archive_label.setText(f"Local measurement file is preserved at:\n{archive_path}")
-        self.archive_label.setVisible(True)
+        self.archive_label.setVisible(False)
         self.retry_button.setVisible(True)
         self.close_button.setEnabled(True)
-        self.add_detail(f"Upload failed: {message}")
-        self.add_detail(f"Local measurement file preserved: {archive_path}")
+        self.add_detail(f"Upload failed: {message[:180]}")
+        self.add_detail("Measurement file preserved locally.")
 
     def show_success(self, measurement_id: str, archive_path: str, receipt: dict[str, Any] | None = None) -> None:
-        self.stage_label.setText("Measurement stored in WebDB")
         receipt = receipt or {}
-        summary = receipt.get("session_summary", {})
-        result_lines = [f"Participant: {receipt.get('participant_code', '—')}",
-                        f"Test: {receipt.get('test_label', '—')}",
-                        f"Started: {receipt.get('started_at', '—')}",
-                        f"Completed tasks: {summary.get('completed', '—')}",
-                        f"Mistakes: {summary.get('mistakes', '—')}",
-                        f"Status: {'incomplete' if summary.get('aborted') else 'completed'}",
-                        f"WebDB measurement ID: {measurement_id}"]
-        self.detail_label.setText("\n".join(result_lines))
+        self.stage_label.setText("Last measurement · uploaded")
+        self.set_measurement_context(
+            str(receipt.get("participant_code", "")),
+            str(receipt.get("test_label", "")), receipt.get("started_at", ""),
+        )
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(1000)
         self.progress_bar.setFormat("Complete")
-        self.archive_label.setText(f"Local archive: {archive_path}")
-        self.archive_label.setVisible(True)
+        self.archive_label.setVisible(False)
         self.retry_button.setVisible(False)
         self.close_button.setEnabled(True)
-        self.add_detail(f"WebDB confirmed storage (measurement {measurement_id}).")
+        self.add_detail("WebDB confirmed measurement storage.")
 
 
 class MeasurementUploadWorker(QObject):
@@ -469,6 +459,7 @@ class MainWindow(QMainWindow):
         self._pending_upload_payload: dict[str, Any] | None = None
         self._upload_retry_attempt = 0
         self._upload_activity_stage = ""
+        self._current_measurement_context: tuple[str, str, str] | None = None
         self._joystick_connected = False
         self._upload_queue = MeasurementUploadQueue()
         queued_uploads = self._upload_queue.pending()
@@ -1429,7 +1420,10 @@ class MainWindow(QMainWindow):
 
         if self._measurement_active and not self._upload_in_progress:
             stage = self._upload_activity_stage or "Measurement running"
-            dialog.set_current_task(stage, "Measurement is in progress. Upload begins after analysis and local files are saved.")
+            if self._current_measurement_context:
+                participant, test, created_at = self._current_measurement_context
+                dialog.stage_label.setText(stage)
+                dialog.set_measurement_context(participant, test, created_at)
 
     def _update_activity_progress(self, stage: str, _current: object, _total: object, _detail: str) -> None:
         self._upload_activity_stage = stage
@@ -2071,6 +2065,11 @@ class MainWindow(QMainWindow):
             payload["queue_id"] = self._upload_queue.enqueue(payload)
             self._queued_upload_count = len(self._upload_queue.pending())
         self._pending_upload_payload = payload
+        self._current_measurement_context = (
+            str(payload.get("participant_code", "—")),
+            str(payload.get("test_label", "—")),
+            str(payload.get("started_at", "")),
+        )
         self._upload_in_progress = True
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
@@ -2078,6 +2077,7 @@ class MainWindow(QMainWindow):
             self._upload_dialog.disconnect_requested.connect(self._disconnect_from_details)
         else:
             self._upload_dialog.begin_new_upload()
+        self._upload_dialog.set_measurement_context(*self._current_measurement_context)
         self._upload_dialog.set_progress(
             "Preparing measurement upload", None, None,
             "The measurement remains saved on this computer while it is processed and uploaded.",
@@ -2095,6 +2095,7 @@ class MainWindow(QMainWindow):
                 self._upload_dialog.show_waiting_for_connection(
                     str(self._pending_upload_payload.get("participant_code", "")),
                     str(self._pending_upload_payload.get("test_label", "")),
+                    self._pending_upload_payload.get("started_at", ""),
                 )
             else:
                 self._upload_dialog.show_idle(len(self._upload_queue.pending()))
@@ -2236,11 +2237,16 @@ class MainWindow(QMainWindow):
                 return
             self._measurement_active = True
         self._upload_activity_stage = "Measurement running"
-        self._refresh_activity_status()
 
         participant_code = self.participant_combo.currentText().strip() or "LOCAL"
         test = self.current_manifest["test"]
         profile_name = f'{test["test_code"]}_v{test["version"]}'
+        self._current_measurement_context = (
+            participant_code, profile_name, datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        if self._upload_dialog is not None:
+            self._upload_dialog.set_measurement_context(*self._current_measurement_context)
+        self._refresh_activity_status()
         is_simple = (
             str(test.get("analysis_profile", "")).upper().startswith("SIMPLE")
             or str(test.get("test_code", "")).upper().startswith("SIMPLE")
@@ -2260,7 +2266,7 @@ class MainWindow(QMainWindow):
             self._presence_test_definition_id = str(selected_test_id) if selected_test_id else None
             self.catalogue_timer.stop()
             runtime = self.common_page.export_common_dict()
-            runtime["debug_output"] = True
+            runtime["debug_output"] = False
             runtime["joystick_name"] = self.joystick_selector.currentText().strip()
             selected_joystick = self.joystick_selector.currentData()
             runtime["joystick_index"] = int(selected_joystick) if isinstance(selected_joystick, int) and selected_joystick >= 0 else 0
@@ -2305,7 +2311,7 @@ class MainWindow(QMainWindow):
                 config.reset_axis = int(runtime["reset_axis"])
                 config.user = participant_code
                 config.profile_name = profile_name
-                config.debug_output = True
+                config.debug_output = False
                 config.validate()
                 self.append_log(
                     f"Starting {test['test_code']} v{test['version']} for participant {participant_code}."
@@ -2319,6 +2325,12 @@ class MainWindow(QMainWindow):
                 raw_path = session.logfile_path
                 if not raw_path:
                     raise RuntimeError("Measurement did not create a raw log.")
+
+            self._current_measurement_context = (
+                participant_code, profile_name, str(session.started_at)
+            )
+            if self._upload_dialog is not None:
+                self._upload_dialog.set_measurement_context(*self._current_measurement_context)
 
             if not self.offline_mode:
                 participant_id = self.participant_combo.currentData()
@@ -2403,7 +2415,15 @@ class MainWindow(QMainWindow):
                     self.append_log(f"Local response graph could not be created: {graph_error}")
 
             if self.offline_mode:
-                self.append_log(f"Offline measurement finished. Raw log: {raw_path}")
+                self.append_log("Offline measurement finished; files saved locally.")
+                if self._upload_dialog is not None:
+                    summary_line = self._current_measurement_context
+                    if summary_line:
+                        self._upload_dialog.set_measurement_context(*summary_line)
+                    self._upload_dialog.set_current_task(
+                        "Last measurement · saved locally",
+                        self._upload_dialog.detail_label.text() if summary_line else "",
+                    )
                 message = (
                     f"Participant: {participant_code}\n"
                     f"Test: {profile_name}\n"
@@ -2450,6 +2470,34 @@ class MainWindow(QMainWindow):
             self.append_log(f"Could not open PDF automatically: {exc}. File: {path}")
 
     def append_log(self, message: str) -> None:
+        message = str(message)
+        if self._measurement_active:
+            routine_events = (
+                "Validating SCoPE", "Building output paths", "Output directory:",
+                "Initializing joystick", "Joystick initialized.", "Release break axis",
+                "Starting countdown", "Raw log file opened:", "Controller link active.",
+                "Target generator seed:", "New target requested:",
+                "Action completed successfully.", "Action timeout.",
+                "Controller link closed.", "SimPLE runtime initialized",
+                "Writing SimPLE raw samples", "SimPLE collision at",
+                "Loaded SimPLE background",
+            )
+            if message.startswith(routine_events):
+                return
+
+        compact_messages = (
+            ("Measurement uploaded:", "Measurement upload confirmed by WebDB."),
+            ("Measurement finished and archived in WebDB.", "Measurement archived in WebDB."),
+            ("Measurement analysis saved:", "Measurement analysis saved locally."),
+            ("Local response graph saved:", "Local response graph saved."),
+            ("Offline measurement finished.", "Offline measurement finished; files saved locally."),
+        )
+        for prefix, short_message in compact_messages:
+            if message.startswith(prefix):
+                message = short_message
+                break
+        if len(message) > 180:
+            message = message[:177].rstrip() + "…"
         now = datetime.now().astimezone()
         entry = f"[{now:%Y-%m-%d %H:%M:%S}] {message}"
         self.log_history.append(entry)
