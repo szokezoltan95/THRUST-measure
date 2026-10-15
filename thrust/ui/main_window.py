@@ -69,7 +69,7 @@ class MeasurementUploadDialog(QDialog):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Measurement upload")
-        self.setMinimumSize(610, 440)
+        self.setMinimumSize(500, 360)
         self.setWindowModality(Qt.WindowModality.NonModal)
 
         self.stage_label = QLabel("Preparing measurement upload…")
@@ -81,7 +81,7 @@ class MeasurementUploadDialog(QDialog):
         self.progress_bar.setValue(0)
         self.activity_log = QPlainTextEdit()
         self.activity_log.setReadOnly(True)
-        self.activity_log.setMinimumHeight(250)
+        self.activity_log.setMinimumHeight(160)
         self.archive_label = QLabel()
         self.archive_label.setWordWrap(True)
         self.archive_label.setVisible(False)
@@ -142,6 +142,20 @@ class MeasurementUploadDialog(QDialog):
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Waiting for connection")
         self.retry_button.setVisible(False)
+        self.close_button.setEnabled(True)
+        self._last_stage = ""
+
+    def show_idle(self, queued_count: int = 0) -> None:
+        self.stage_label.setText("No active processing")
+        self.detail_label.setText(
+            "The application is idle." if not queued_count
+            else f"{queued_count} measurement(s) are saved in the local upload queue and await a WebDB connection."
+        )
+        self.progress_bar.setRange(0, 1000)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Idle" if not queued_count else "Waiting for WebDB")
+        self.retry_button.setVisible(False)
+        self.archive_label.setVisible(False)
         self.close_button.setEnabled(True)
         self._last_stage = ""
 
@@ -395,8 +409,11 @@ class MainWindow(QMainWindow):
         self._upload_thread: threading.Thread | None = None
         self._pending_upload_payload: dict[str, Any] | None = None
         self._upload_retry_attempt = 0
+        self._upload_activity_stage = ""
+        self._joystick_connected = False
         self._upload_queue = MeasurementUploadQueue()
         queued_uploads = self._upload_queue.pending()
+        self._queued_upload_count = len(queued_uploads)
         if queued_uploads:
             self._pending_upload_payload = queued_uploads[0]
         self._measurement_lock = threading.Lock()
@@ -416,7 +433,11 @@ class MainWindow(QMainWindow):
         self.common_page.joystick_status_changed.connect(self._set_joystick_status)
         self.common_page.joystick_values_changed.connect(self._update_joystick_feedback)
         self.joystick_bars: dict[str, QProgressBar] = {}
+        self.axis_labels: dict[str, QLabel] = {}
         self.joystick_device_names: list[str] = []
+        self._axis_test_extremes: dict[str, set[str]] = {
+            role: set() for role in ("LX", "LY", "RX", "RY", "BREAK", "RESET")
+        }
 
         self.server_edit = QLineEdit(DEFAULT_WEBDB_URL)
         self.username_edit = QLineEdit()
@@ -481,6 +502,7 @@ class MainWindow(QMainWindow):
         self.test_button.clicked.connect(self._choose_test)
         self.test_combo.setVisible(False)
         self.program_selector.currentIndexChanged.connect(self._refresh_test_choices)
+        self.program_selector.currentIndexChanged.connect(self._measurement_mode_changed)
 
         selection_group = QGroupBox("Participant and test")
         selection_group_layout = QVBoxLayout(selection_group)
@@ -538,6 +560,7 @@ class MainWindow(QMainWindow):
             axis_row_layout.setSpacing(7)
             label = QLabel(name)
             label.setMinimumWidth(48)
+            self.axis_labels[name] = label
             bar = QProgressBar()
             bar.setRange(-100, 100)
             bar.setValue(0)
@@ -563,7 +586,7 @@ class MainWindow(QMainWindow):
                 axis_row_layout.addWidget(bar, 1)
             feedback_grid.addWidget(axis_row, row, 0)
             self.axis_rows[name] = axis_row
-            self._axis_spins[name].valueChanged.connect(lambda _value: self._update_joystick_feedback(self.common_page.latest_axis_values))
+            self._axis_spins[name].valueChanged.connect(self._on_axis_mapping_changed)
         joystick_layout.addLayout(feedback_grid)
 
         self.axis_assignment_button = QPushButton("Configure joystick…")
@@ -618,14 +641,11 @@ class MainWindow(QMainWindow):
             title.setObjectName("appTitle")
             title_row.addWidget(title)
         title_row.addStretch()
-        self.upload_status_button = QPushButton("Upload in progress")
+        self.upload_status_button = QPushButton("Details")
         self.upload_status_button.setObjectName("logsButton")
-        self.upload_status_button.setVisible(False)
         self.upload_status_button.clicked.connect(self._show_measurement_upload)
         if self._pending_upload_payload is not None:
-            self.upload_status_button.setText("Upload waiting · connect to WebDB")
-            self.upload_status_button.setVisible(True)
-        title_row.addWidget(self.upload_status_button)
+            self.upload_status_button.setToolTip("View the restored upload queue and its progress.")
         self.appearance_button = QToolButton()
         self.appearance_button.setObjectName("appearanceButton")
         self.appearance_button.setText("◐")
@@ -668,10 +688,19 @@ class MainWindow(QMainWindow):
         session_actions_layout.addWidget(self.connect_button)
         session_actions_layout.addWidget(self.disconnect_button)
 
-        session_ribbon = QGroupBox("Measurement session")
+        self.activity_status = QLabel("Idle")
+        self.activity_status.setObjectName("activityStatus")
+        self.activity_status.setProperty("state", "idle")
+        self.activity_status.setMinimumWidth(185)
+        self.activity_status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.activity_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        session_ribbon = QGroupBox("System status")
         session_ribbon_layout = QHBoxLayout(session_ribbon)
         session_ribbon_layout.setContentsMargins(10, 4, 10, 4)
-        session_ribbon_layout.addWidget(session_actions)
+        session_ribbon_layout.addWidget(session_actions, 2)
+        session_ribbon_layout.addWidget(self.activity_status, 1)
+        session_ribbon_layout.addWidget(self.upload_status_button)
 
         controls_panel = QWidget()
         controls_layout = QVBoxLayout(controls_panel)
@@ -695,6 +724,7 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._apply_theme()
+        self._refresh_activity_status()
         style_hints = QGuiApplication.styleHints()
         if hasattr(style_hints, "colorSchemeChanged"):
             style_hints.colorSchemeChanged.connect(self._system_theme_changed)
@@ -1126,6 +1156,7 @@ class MainWindow(QMainWindow):
                 QPushButton#joystickButton {{ text-align: center; min-height: 24px; padding: 3px 8px; font-weight: 600; }}
                 QPushButton#joystickButton:hover {{ border-color: {colors['accent']}; }}
                 QPushButton#joystickButton[state="connected"] {{ color: #20b865; }}
+                QPushButton#joystickButton[state="testing"] {{ color: #e5a126; }}
                 QPushButton#joystickButton[state="disconnected"] {{ color: #ef5962; }}
                 QPushButton#axisAssignmentButton {{ text-align: center; padding: 6px 10px; font-weight: 600; }}
                 QLabel#axisPlaceholder {{ color: {colors['muted']}; background: {colors['surface_alt']}; border: 1px dashed {colors['border']}; border-radius: 3px; }}
@@ -1133,6 +1164,11 @@ class MainWindow(QMainWindow):
                 QLabel#measurementStatus[state="ready"] {{ color: #20b865; }}
                 QLabel#measurementStatus[state="error"] {{ color: #ef5962; }}
                 QLabel#measurementStatus[state="warning"] {{ color: #e59b24; }}
+                QLabel#activityStatus[state="idle"] {{ color: {colors['muted']}; }}
+                QLabel#activityStatus[state="processing"] {{ color: #e5a126; font-weight: 700; }}
+                QLabel#activityStatus[state="uploading"] {{ color: #4b9cff; font-weight: 700; }}
+                QLabel#activityStatus[state="warning"] {{ color: #e59b24; font-weight: 700; }}
+                QLabel#activityStatus[state="active"] {{ color: #20b865; font-weight: 700; }}
                 QPushButton#startMeasurement {{ color: #ffffff; background: #16804b; border: 1px solid #27a967; border-radius: 8px; padding: 13px 16px; font-size: 13pt; font-weight: 800; letter-spacing: .4px; }}
                 QPushButton#startMeasurement:hover:enabled {{ background: #1b9959; }}
                 QPushButton#startMeasurement:disabled {{ color: #f7eeee; background: #76252c; border-color: #9e343c; }}
@@ -1141,6 +1177,10 @@ class MainWindow(QMainWindow):
                 QCheckBox::indicator:checked {{ background: {colors['accent']}; border-color: {colors['accent']}; }}
                 QProgressBar#miniAxis {{ color: {colors['text']}; background: {colors['surface_alt']}; border: 1px solid {colors['border']}; border-radius: 3px; }}
                 QProgressBar#miniAxis::chunk {{ background: {colors['accent']}; border-radius: 2px; }}
+                QProgressBar#miniAxis[axisTestState="disconnected"]::chunk {{ background: #ef5962; }}
+                QProgressBar#miniAxis[axisTestState="testing"]::chunk {{ background: #e5a126; }}
+                QProgressBar#miniAxis[axisTestState="complete"]::chunk {{ background: #2d8cff; }}
+                QProgressBar#miniAxis[axisTestState="unused"]::chunk {{ background: {colors['muted']}; }}
                 QLabel#joystickLed[connectionState="connected"], QLabel#connectionStatus[connectionState="connected"] {{ color: #159653; font-weight: 700; }}
                 QLabel#joystickLed[connectionState="disconnected"], QLabel#connectionStatus[connectionState="disconnected"] {{ color: #d34852; font-weight: 700; }}
                 QLabel#connectionStatus[connectionState="warning"] {{ color: #b97911; font-weight: 700; }}
@@ -1158,6 +1198,10 @@ class MainWindow(QMainWindow):
 
     def _update_run_availability(self, joystick_present: bool | None = None) -> None:
         connected = self.common_page.joystick_active if joystick_present is None else joystick_present
+        mapping_valid = self._axis_assignments_valid()
+        required_axes = self._required_joystick_test_axes()
+        axes_tested = self._joystick_axes_tested(required_axes)
+        joystick_ready = connected and mapping_valid and axes_tested
         participant_ready = bool(
             self.participant_combo.currentText().strip()
             if self.offline_mode
@@ -1165,7 +1209,7 @@ class MainWindow(QMainWindow):
         )
         test_ready = bool(self.current_manifest and self.test_combo.currentIndex() >= 0)
         upload_blocks_online_run = self._pending_upload_payload is not None and not self.offline_mode
-        self.run_button.setEnabled(connected and test_ready and participant_ready and
+        self.run_button.setEnabled(joystick_ready and test_ready and participant_ready and
                                    (self.offline_mode or self._catalogue_connection_ok)
                                    and not self._upload_in_progress and not upload_blocks_online_run)
         if self.led_controller is not None and not self._measurement_active:
@@ -1177,7 +1221,78 @@ class MainWindow(QMainWindow):
         )
         self._set_status_indicator("participant", participant_ready, "PARTICIPANT · OK", "SELECT PARTICIPANT")
         self._set_status_indicator("test", test_ready, "TEST · OK", "SELECT TEST")
-        self._set_status_indicator("joystick", connected, "JOYSTICK · OK", "JOYSTICK DISCONNECTED")
+        if not connected:
+            joystick_text, joystick_error, joystick_state = "JOYSTICK · DISCONNECTED", "JOYSTICK · DISCONNECTED", "error"
+            self.joystick_button.setText("Select joystick · DISCONNECTED")
+            self.joystick_button.setProperty("state", "disconnected")
+            joystick_tooltip = "Connect a joystick to begin the axis test."
+        elif not mapping_valid:
+            joystick_text, joystick_error, joystick_state = "JOYSTICK · CONFIGURE AXES", "JOYSTICK · CONFIGURE AXES", "warning"
+            self.joystick_button.setText(f"{self._connected_joystick_name()} · CONFIGURE AXES")
+            self.joystick_button.setProperty("state", "testing")
+            joystick_tooltip = "Open Configure joystick and assign a unique axis to LX, LY, RX and RY."
+        elif not axes_tested:
+            complete_count = sum(
+                self._joystick_axes_tested([role]) for role in required_axes
+            )
+            joystick_text = f"JOYSTICK · TEST {complete_count}/{len(required_axes)}"
+            joystick_error, joystick_state = joystick_text, "warning"
+            self.joystick_button.setText(f"{self._connected_joystick_name()} · PERFORM JOYSTICK TEST")
+            self.joystick_button.setProperty("state", "testing")
+            joystick_tooltip = "Move every listed axis to its negative and positive limits. The bars turn blue when verified."
+        else:
+            joystick_text, joystick_error, joystick_state = "JOYSTICK · READY", "JOYSTICK · READY", "ready"
+            self.joystick_button.setText(f"{self._connected_joystick_name()} · READY")
+            self.joystick_button.setProperty("state", "connected")
+            joystick_tooltip = "Joystick axis test complete."
+        self.joystick_button.setToolTip(joystick_tooltip)
+        self.joystick_button.style().unpolish(self.joystick_button)
+        self.joystick_button.style().polish(self.joystick_button)
+        self._set_status_indicator(
+            "joystick", joystick_ready, joystick_text, joystick_error, state=joystick_state
+        )
+        self._refresh_activity_status()
+
+    def _required_joystick_test_axes(self) -> list[str]:
+        roles = ["LX", "LY", "RX", "RY"]
+        if self._axis_spins["BREAK"].value() >= 0:
+            roles.append("BREAK")
+        if str(self.program_selector.currentData() or "SCOPE") == "SIMPLE":
+            roles.append("RESET")
+        return roles
+
+    def _axis_assignments_valid(self) -> bool:
+        if not self.common_page.joystick_active or self.common_page.joystick is None:
+            return False
+        try:
+            count = int(self.common_page.joystick.get_numaxes())
+        except Exception:
+            return False
+        roles = self._required_joystick_test_axes()
+        indices = [int(self._axis_spins[role].value()) for role in roles]
+        if any(index < 0 or index >= count for index in indices):
+            return False
+        gimbal_indices = [int(self._axis_spins[role].value()) for role in ("LX", "LY", "RX", "RY")]
+        return len(set(gimbal_indices)) == len(gimbal_indices) and len(set(indices)) == len(indices)
+
+    def _joystick_axes_tested(self, roles: list[str]) -> bool:
+        return all({"negative", "positive"}.issubset(self._axis_test_extremes.get(role, set())) for role in roles)
+
+    def _connected_joystick_name(self) -> str:
+        device_index = self.joystick_selector.currentData()
+        if isinstance(device_index, int) and 0 <= device_index < len(self.joystick_device_names):
+            return self.joystick_device_names[device_index]
+        return "Joystick"
+
+    def _reset_joystick_axis_test(self) -> None:
+        for progress in self._axis_test_extremes.values():
+            progress.clear()
+
+    def _on_axis_mapping_changed(self, _value: int = 0) -> None:
+        self._reset_joystick_axis_test()
+        self._update_joystick_feedback(self.common_page.latest_axis_values)
+        if hasattr(self, "run_button"):
+            self._update_run_availability()
 
     def _set_status_indicator(
         self, key: str, ready: bool, good_text: str, error_text: str, *, state: str | None = None
@@ -1185,10 +1300,55 @@ class MainWindow(QMainWindow):
         indicator = self.measurement_status.get(key)
         if indicator is None:
             return
-        indicator.setText(good_text if ready else error_text)
-        indicator.setProperty("state", state or ("ready" if ready else "error"))
+        text = good_text if ready else error_text
+        next_state = state or ("ready" if ready else "error")
+        if indicator.text() == text and indicator.property("state") == next_state:
+            return
+        indicator.setText(text)
+        indicator.setProperty("state", next_state)
         indicator.style().unpolish(indicator)
         indicator.style().polish(indicator)
+
+    def _refresh_activity_status(self) -> None:
+        if not hasattr(self, "activity_status"):
+            return
+        queued_count = self._queued_upload_count
+        if self._upload_in_progress:
+            stage = self._upload_activity_stage or "Processing measurement"
+            lowered = stage.lower()
+            state = "uploading" if "uploading measurement" in lowered or "waiting for webdb" in lowered else "processing"
+            text = f"{stage} · {queued_count} in queue"
+        elif self._measurement_active:
+            if self._upload_activity_stage:
+                state = "processing" if any(word in self._upload_activity_stage.lower() for word in ("analy", "saving", "prepar")) else "active"
+                text = self._upload_activity_stage
+            else:
+                state = "active"
+                text = "Measurement running"
+        elif queued_count:
+            state = "warning"
+            text = f"Upload pending · {queued_count} in queue"
+        else:
+            state = "idle"
+            text = "Idle"
+        self.activity_status.setText(text)
+        if self.activity_status.property("state") != state:
+            self.activity_status.setProperty("state", state)
+            self.activity_status.style().unpolish(self.activity_status)
+            self.activity_status.style().polish(self.activity_status)
+        self.upload_status_button.setToolTip(
+            f"Open activity details · {queued_count} measurement(s) in the persistent upload queue."
+            if queued_count else "Open recent processing details."
+        )
+
+    def _update_activity_progress(self, stage: str, _current: object, _total: object, _detail: str) -> None:
+        self._upload_activity_stage = stage
+        self._refresh_activity_status()
+
+    def _measurement_mode_changed(self, _index: int = 0) -> None:
+        self._update_joystick_feedback(self.common_page.latest_axis_values)
+        if hasattr(self, "run_button"):
+            self._update_run_availability()
 
     def _poll_joystick_devices(self) -> None:
         self._refresh_joystick_selector()
@@ -1204,6 +1364,7 @@ class MainWindow(QMainWindow):
         if device_index is None or int(device_index) < 0:
             self._set_joystick_status(False, "No joystick detected")
             return
+        self._reset_joystick_axis_test()
         if self.common_page.select_joystick(int(device_index), connect=True):
             self._apply_joystick_profile()
 
@@ -1263,6 +1424,9 @@ class MainWindow(QMainWindow):
         self.axis_assignment_button.setToolTip(f"Axis assignments will load automatically for {name or 'this joystick'}.")
 
     def _set_joystick_status(self, connected: bool, status: str) -> None:
+        if connected != self._joystick_connected:
+            self._reset_joystick_axis_test()
+        self._joystick_connected = connected
         if connected:
             device_index = self.joystick_selector.currentData()
             device_name = (
@@ -1270,11 +1434,8 @@ class MainWindow(QMainWindow):
                 if isinstance(device_index, int) and 0 <= device_index < len(self.joystick_device_names)
                 else "Joystick"
             )
-            self.joystick_button.setText(device_name)
-        else:
-            self.joystick_button.setText("Select Joystick")
-        self.joystick_button.setText(f"{device_name} · CONNECTED") if connected else self.joystick_button.setText("Select Joystick · DISCONNECTED")
-        self.joystick_button.setProperty("state", "connected" if connected else "disconnected")
+        self.joystick_button.setText(f"{device_name} · PERFORM JOYSTICK TEST") if connected else self.joystick_button.setText("Select Joystick · DISCONNECTED")
+        self.joystick_button.setProperty("state", "testing" if connected else "disconnected")
         self.joystick_button.style().unpolish(self.joystick_button)
         self.joystick_button.style().polish(self.joystick_button)
         self._update_joystick_feedback(self.common_page.latest_axis_values)
@@ -1282,19 +1443,48 @@ class MainWindow(QMainWindow):
             self._update_run_availability(connected)
 
     def _update_joystick_feedback(self, values: object) -> None:
-        if not isinstance(values, list):
-            return
+        axis_values = values if isinstance(values, list) else []
+        required_axes = self._required_joystick_test_axes()
+        progress_changed = False
         for role, bar in self.joystick_bars.items():
             axis_index = self._axis_spins[role].value()
-            available = self.common_page.joystick_active and 0 <= axis_index < len(values)
+            available = self.common_page.joystick_active and 0 <= axis_index < len(axis_values)
             if role == "RESET":
                 is_simple = str(self.program_selector.currentData() or "SCOPE") == "SIMPLE"
                 self.axis_bar_stacks[role].setCurrentWidget(
                     bar if is_simple and available else self.axis_placeholders[role]
                 )
             if available:
-                value = float(values[axis_index])
+                value = float(axis_values[axis_index])
                 bar.setValue(int(max(-1.0, min(1.0, value)) * 100))
+                if role in required_axes:
+                    if value <= -0.95 and "negative" not in self._axis_test_extremes[role]:
+                        self._axis_test_extremes[role].add("negative")
+                        progress_changed = True
+                    if value >= 0.95 and "positive" not in self._axis_test_extremes[role]:
+                        self._axis_test_extremes[role].add("positive")
+                        progress_changed = True
+            if not self.common_page.joystick_active:
+                state = "disconnected"
+            elif role not in required_axes:
+                state = "unused"
+            elif self._joystick_axes_tested([role]):
+                state = "complete"
+            else:
+                state = "testing"
+            if bar.property("axisTestState") != state:
+                bar.setProperty("axisTestState", state)
+                bar.style().unpolish(bar)
+                bar.style().polish(bar)
+            if role in required_axes:
+                reached = self._axis_test_extremes[role]
+                label_text = f"{role}  {'−✓' if 'negative' in reached else '−○'} {'+✓' if 'positive' in reached else '+○'}"
+            else:
+                label_text = role
+            if self.axis_labels[role].text() != label_text:
+                self.axis_labels[role].setText(label_text)
+        if progress_changed and hasattr(self, "run_button"):
+            self._update_run_availability()
 
     def _open_login(self) -> None:
         dialog = LoginDialog(
@@ -1772,6 +1962,7 @@ class MainWindow(QMainWindow):
     def _begin_measurement_upload(self, payload: dict[str, Any]) -> None:
         if not payload.get("queue_id"):
             payload["queue_id"] = self._upload_queue.enqueue(payload)
+            self._queued_upload_count = len(self._upload_queue.pending())
         self._pending_upload_payload = payload
         self._upload_in_progress = True
         if self._upload_dialog is None:
@@ -1783,24 +1974,21 @@ class MainWindow(QMainWindow):
             "Preparing measurement upload", None, None,
             "The measurement remains saved on this computer while it is processed and uploaded.",
         )
-        self._upload_dialog.show()
-        self._upload_dialog.raise_()
-        self._upload_dialog.activateWindow()
-        self.upload_status_button.setText("Upload in progress")
-        self.upload_status_button.setVisible(True)
+        self._upload_activity_stage = "Preparing measurement"
         self._update_run_availability()
         self._start_measurement_upload_worker(payload)
 
     def _show_measurement_upload(self) -> None:
         if self._upload_dialog is None:
-            if self._pending_upload_payload is None:
-                return
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
-            self._upload_dialog.show_waiting_for_connection(
-                str(self._pending_upload_payload.get("participant_code", "")),
-                str(self._pending_upload_payload.get("test_label", "")),
-            )
+            if self._pending_upload_payload is not None:
+                self._upload_dialog.show_waiting_for_connection(
+                    str(self._pending_upload_payload.get("participant_code", "")),
+                    str(self._pending_upload_payload.get("test_label", "")),
+                )
+            else:
+                self._upload_dialog.show_idle(len(self._upload_queue.pending()))
         self._upload_dialog.show()
         self._upload_dialog.raise_()
         self._upload_dialog.activateWindow()
@@ -1811,7 +1999,7 @@ class MainWindow(QMainWindow):
         if self.client is not None and not self.offline_mode:
             self._pending_upload_payload["client"] = self.client
         self._upload_in_progress = True
-        self.upload_status_button.setText("Upload in progress")
+        self._upload_activity_stage = "Retrying upload"
         self._upload_dialog.prepare_retry()
         self._update_run_availability()
         self._start_measurement_upload_worker(self._pending_upload_payload)
@@ -1834,8 +2022,7 @@ class MainWindow(QMainWindow):
                 return
         payload["client"] = self.client
         self._upload_in_progress = True
-        self.upload_status_button.setText("Resuming pending upload")
-        self.upload_status_button.setVisible(True)
+        self._upload_activity_stage = "Resuming pending upload"
         if self._upload_dialog is None:
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
@@ -1844,7 +2031,6 @@ class MainWindow(QMainWindow):
             "Resuming pending upload", None, None,
             "A saved measurement was found. Uploading it now that WebDB is connected.",
         )
-        self._upload_dialog.show()
         self._start_measurement_upload_worker(payload)
 
     def _retry_queued_upload_if_connected(self) -> None:
@@ -1857,6 +2043,7 @@ class MainWindow(QMainWindow):
         worker = MeasurementUploadWorker(payload)
         self._upload_worker = worker
         worker.progress.connect(self._upload_dialog.set_progress)
+        worker.progress.connect(self._update_activity_progress)
         worker.succeeded.connect(self._measurement_upload_succeeded)
         worker.failed.connect(self._measurement_upload_failed)
         worker.finished.connect(self._measurement_upload_worker_finished)
@@ -1884,13 +2071,11 @@ class MainWindow(QMainWindow):
             self._upload_dialog.show_success(measurement_id, archive_path, self._pending_upload_payload)
         remaining = self._upload_queue.pending()
         self._pending_upload_payload = remaining[0] if remaining else None
+        self._queued_upload_count = len(remaining)
         self._upload_in_progress = False
+        self._upload_activity_stage = ""
         if self._pending_upload_payload is not None:
-            self.upload_status_button.setText(f"Upload queue · {len(remaining)} remaining")
-            self.upload_status_button.setVisible(True)
             QTimer.singleShot(2500, self._resume_pending_upload)
-        else:
-            self.upload_status_button.setVisible(False)
         self._update_run_availability()
         QTimer.singleShot(0, self._check_webdb_catalogue)
 
@@ -1908,11 +2093,8 @@ class MainWindow(QMainWindow):
             self._upload_dialog = MeasurementUploadDialog(self)
             self._upload_dialog.retry_requested.connect(self._retry_measurement_upload)
         self._upload_dialog.show_failure(message, archive_path, self._pending_upload_payload)
-        self._upload_dialog.show()
-        self._upload_dialog.raise_()
         self._upload_in_progress = False
-        self.upload_status_button.setText("Upload pending · retry")
-        self.upload_status_button.setVisible(True)
+        self._upload_activity_stage = "Upload pending"
         self._update_run_availability()
         if self.client is not None and not self.offline_mode and Path(archive_path).is_file():
             delay_seconds = min(30 * (2 ** self._upload_retry_attempt), 300)
@@ -1923,74 +2105,15 @@ class MainWindow(QMainWindow):
         self._upload_worker = None
         self._upload_thread = None
 
-    def _confirm_measurement_preflight(self) -> bool:
-        if not self.common_page.joystick_active:
-            QMessageBox.warning(self, "Pre-measurement check", "Connect a joystick before starting a measurement.")
-            return False
-        if not self.offline_mode and (not self._catalogue_connection_ok or not self.participant_combo.currentData()):
-            QMessageBox.warning(self, "Pre-measurement check", "Connect to WebDB and select a valid participant.")
-            return False
-        if self.current_manifest is None or (not self.offline_mode and self.test_combo.currentIndex() < 0):
-            QMessageBox.warning(self, "Pre-measurement check", "Select a test version before starting.")
-            return False
-
-        joystick = self.common_page.joystick
-        try:
-            axis_count = int(joystick.get_numaxes()) if joystick is not None else 0
-        except Exception:
-            axis_count = 0
-        mapped = {role: int(spin.value()) for role, spin in self._axis_spins.items() if role in {"LX", "LY", "RX", "RY"}}
-        invalid = [role for role, index in mapped.items() if index < 0 or index >= axis_count]
-        duplicates = len(set(mapped.values())) != len(mapped)
-        if invalid or duplicates:
-            detail = "Joystick axis mapping is invalid. Open Configure joystick and check LX, LY, RX and RY."
-            if invalid:
-                detail += f" Invalid axes: {', '.join(invalid)}."
-            if duplicates:
-                detail += " Two or more gimbal directions use the same joystick axis."
-            QMessageBox.warning(self, "Pre-measurement check", detail)
-            return False
-
-        axes_text = "\n".join(f"{role} → joystick axis {index + 1}" for role, index in mapped.items())
-        break_axis = self.common_page.break_axis_spin.value()
-        reset_axis = self.common_page.reset_axis_spin.value()
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Pre-measurement check")
-        dialog.setMinimumWidth(470)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel(
-            f"Participant: {self.participant_combo.currentText().strip() or 'LOCAL'}\n"
-            f"Test: {self.test_combo.currentText()}\n"
-            f"Joystick: {self.joystick_selector.currentText()}\n\n"
-            f"Axis mapping:\n{axes_text}\n"
-            f"BREAK: {'axis ' + str(break_axis + 1) if break_axis >= 0 else 'not assigned'} · "
-            f"RESET: {'axis ' + str(reset_axis + 1) if reset_axis >= 0 else 'not assigned'}\n\n"
-            "If the directions or controls have not been verified yet, cancel and check them "
-            "using the live joystick indicators in the main window. Confirm BREAK and RESET "
-            "controls if assigned, and make sure the measurement area is clear."
-        ))
-        confirmed = QCheckBox("I checked the joystick directions and measurement controls")
-        layout.addWidget(confirmed)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
-        )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Start measurement")
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
-        confirmed.toggled.connect(buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        return dialog.exec() == QDialog.DialogCode.Accepted
-
     def _run_selected_measurement(self) -> None:
         if self.current_manifest is None:
-            return
-        if not self._confirm_measurement_preflight():
             return
         with self._measurement_lock:
             if self._remote_disconnect_requested:
                 return
             self._measurement_active = True
+        self._upload_activity_stage = "Measurement running"
+        self._refresh_activity_status()
 
         participant_code = self.participant_combo.currentText().strip() or "LOCAL"
         test = self.current_manifest["test"]
@@ -2113,6 +2236,9 @@ class MainWindow(QMainWindow):
                 self._begin_measurement_upload(upload_payload)
                 return
 
+            self._upload_activity_stage = "Analyzing measurement"
+            self._refresh_activity_status()
+            QApplication.processEvents()
             if is_simple:
                 analysis = analyze_simple_log(raw_path, started_at=session.started_at)
             else:
@@ -2140,6 +2266,9 @@ class MainWindow(QMainWindow):
                     "abort_reason": getattr(session, "abort_reason", ""),
                 },
             )
+            self._upload_activity_stage = "Saving local results"
+            self._refresh_activity_status()
+            QApplication.processEvents()
             analysis_path = save_analysis_artifact(raw_path, analysis)
             self.append_log(f"Measurement analysis saved: {analysis_path}")
             if create_local_graph:
@@ -2172,6 +2301,8 @@ class MainWindow(QMainWindow):
             if self._measurement_active:
                 with self._measurement_lock:
                     self._measurement_active = False
+                if not self._upload_in_progress:
+                    self._upload_activity_stage = ""
                 self._update_run_availability()
                 self._presence_participant_id = None
                 self._presence_test_definition_id = None
