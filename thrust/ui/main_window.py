@@ -104,9 +104,12 @@ class MeasurementUploadDialog(QDialog):
         self.stage_label.setFont(task_font)
         self.detail_label = QLabel("The application is idle.")
         self.detail_label.setWordWrap(False)
+        self.progress_text = QLabel("Idle")
+        self.progress_text.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
         self.archive_label = QLabel()
         self.archive_label.setWordWrap(True)
         self.archive_label.setVisible(False)
@@ -114,6 +117,7 @@ class MeasurementUploadDialog(QDialog):
         task_box_layout = QVBoxLayout(task_box)
         task_box_layout.addWidget(self.stage_label)
         task_box_layout.addWidget(self.detail_label)
+        task_box_layout.addWidget(self.progress_text)
         task_box_layout.addWidget(self.progress_bar)
         task_box_layout.addWidget(self.archive_label)
 
@@ -182,10 +186,14 @@ class MeasurementUploadDialog(QDialog):
             self._last_stage = stage
         if current is None or total is None or total <= 0:
             self.progress_bar.setRange(0, 0)
+            self.progress_text.setText(stage)
             return
         self.progress_bar.setRange(0, 1000)
-        self.progress_bar.setValue(min(1000, int(current * 1000 / total)))
-        self.progress_bar.setFormat(f"%p% · {current / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB")
+        value = min(1000, int(current * 1000 / total))
+        self.progress_bar.setValue(value)
+        self.progress_text.setText(
+            f"{value / 10:.1f}% · {current / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB"
+        )
 
     def prepare_retry(self) -> None:
         self.retry_button.setVisible(False)
@@ -193,7 +201,7 @@ class MeasurementUploadDialog(QDialog):
         self.archive_label.setVisible(False)
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Preparing…")
+        self.progress_text.setText("Preparing…")
         self.add_detail("Starting a new upload attempt.")
         self._last_stage = ""
 
@@ -202,7 +210,7 @@ class MeasurementUploadDialog(QDialog):
         self.set_measurement_context(participant, test, created_at)
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Waiting for connection")
+        self.progress_text.setText("Waiting for connection")
         self.retry_button.setVisible(False)
         self.close_button.setEnabled(True)
         self._last_stage = ""
@@ -215,7 +223,7 @@ class MeasurementUploadDialog(QDialog):
             self.detail_label.setText("No active task")
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Idle" if not queued_count else "Waiting for WebDB")
+        self.progress_text.setText("Idle" if not queued_count else "Waiting for WebDB")
         self.retry_button.setVisible(False)
         self.archive_label.setVisible(False)
         self.close_button.setEnabled(True)
@@ -227,7 +235,7 @@ class MeasurementUploadDialog(QDialog):
         self.archive_label.setVisible(False)
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Preparing…")
+        self.progress_text.setText("Preparing…")
         self.add_detail("A new upload task has started.")
         self._last_stage = ""
 
@@ -240,7 +248,7 @@ class MeasurementUploadDialog(QDialog):
         )
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Upload failed")
+        self.progress_text.setText("Upload failed")
         self.archive_label.setVisible(False)
         self.retry_button.setVisible(True)
         self.close_button.setEnabled(True)
@@ -256,7 +264,7 @@ class MeasurementUploadDialog(QDialog):
         )
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(1000)
-        self.progress_bar.setFormat("Complete")
+        self.progress_text.setText("Complete")
         self.archive_label.setVisible(False)
         self.retry_button.setVisible(False)
         self.close_button.setEnabled(True)
