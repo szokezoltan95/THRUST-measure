@@ -155,9 +155,20 @@ class MeasurementUploadDialog(QDialog):
         self.progress_bar.setFormat("Preparing…")
         self._last_stage = ""
 
-    def show_failure(self, message: str, archive_path: str) -> None:
+    def show_failure(self, message: str, archive_path: str, receipt: dict[str, Any] | None = None) -> None:
         self.stage_label.setText("Upload could not be completed")
-        self.detail_label.setText(message)
+        receipt = receipt or {}
+        summary = receipt.get("session_summary", {})
+        details = [message]
+        if receipt:
+            details.extend([
+                f"Participant: {receipt.get('participant_code', '—')}",
+                f"Test: {receipt.get('test_label', '—')}",
+                f"Started: {receipt.get('started_at', '—')}",
+                f"Completed tasks: {summary.get('completed', '—')} · mistakes: {summary.get('mistakes', '—')}",
+                f"Status: {'incomplete' if summary.get('aborted') else 'completed'}",
+            ])
+        self.detail_label.setText("\n".join(details))
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Upload failed")
@@ -1894,7 +1905,7 @@ class MainWindow(QMainWindow):
                     str(queue_id), raw_log_path=archive_path, queue_status="failed", last_error=message
                 )
         if self._upload_dialog is not None:
-            self._upload_dialog.show_failure(message, archive_path)
+            self._upload_dialog.show_failure(message, archive_path, self._pending_upload_payload)
         self._upload_in_progress = False
         self.upload_status_button.setText("Upload pending · retry")
         self.upload_status_button.setVisible(True)
