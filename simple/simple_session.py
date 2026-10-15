@@ -67,6 +67,7 @@ def run_simple_session(
     profile_name: str,
     log_callback: Callable[[str], None] | None = None,
     state_callback: Callable[[str], None] | None = None,
+    tracking_callback: Callable | None = None,
     compress_output: bool = True,
 ) -> SimpleSessionResult:
     config.validate()
@@ -165,6 +166,15 @@ def run_simple_session(
                 in_zone = not copter.crashed and distance <= config.completion_radius_m
                 if state_callback:
                     state_callback("in_zone" if in_zone else "out_of_zone")
+                if tracking_callback:
+                    target_error = (target[0] - copter.position[0], target[1] - copter.position[1])
+                    tracking_callback(
+                        target_error,
+                        target_error,
+                        max(config.world_width_m / 2, config.world_height_m / 2),
+                        (config.completion_radius_m, config.completion_radius_m),
+                        (config.completion_radius_m, config.completion_radius_m),
+                    )
                 in_zone_s = in_zone_s + dt if in_zone else 0.0
                 action_number = completed + timed_out + 1
                 writer.writerow((
